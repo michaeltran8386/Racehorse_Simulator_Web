@@ -1,5 +1,5 @@
 // Gói tin JSON theo SRS §9 (Data Contract). Tên trường snake_case giữ nguyên như tài liệu.
-import { alertsOf, HORSE_LENGTH_M, summarize, type HorseProfile, type Race, type RunState, standings } from "./engine";
+import { alertsOf, HORSE_LENGTH_M, summarize, type HorseProfile, type Race, type RunState, standings } from "./engine.ts";
 
 const r1 = (x: number) => Math.round(x * 10) / 10;
 
@@ -97,6 +97,23 @@ export function workoutFinishedPacket(sessionId: string, h: HorseProfile, run: R
     surface: run.surface,
     distance_planned_m: run.targetM,
     result: summarize(run),
+  };
+}
+
+export function examFinishedPacket(sessionId: string, h: HorseProfile) {
+  return {
+    event: "sim:exam_finished",
+    session_id: sessionId,
+    horse_id: h.id,
+    captured_at: new Date().toISOString(),
+    model_version: "equiflow-sim-v3",
+    source: "EQUIFLOW_SIMULATOR",
+    metrics: {
+      temperature: { value: r1(37.7 + (1 - h.fitness) * 2), unit: "CELSIUS" },
+      resting_heart_rate: { value: Math.round(h.hrRest), unit: "BPM" },
+      respiratory_rate: { value: Math.round(10 + (1 - h.fitness) * 12), unit: "BREATHS_PER_MINUTE" },
+      weight: { value: h.weightKg, unit: "KG" },
+    },
   };
 }
 
