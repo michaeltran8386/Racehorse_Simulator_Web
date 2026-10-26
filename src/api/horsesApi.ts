@@ -18,7 +18,7 @@ export interface CatalogItem {
 }
 
 export async function listHorses(limit = 100): Promise<any[]> {
-  const data = await api<any>('GET', `/horses?limit=${limit}`);
+  const data = await api<any>('GET', `/simulator/horses?limit=${limit}`);
   if (Array.isArray(data)) return data;
   if (data && Array.isArray(data.items)) return data.items;
   return [];
