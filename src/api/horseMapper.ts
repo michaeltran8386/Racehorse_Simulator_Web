@@ -11,7 +11,7 @@ function hashString(str: string): number {
   return Math.abs(hash);
 }
 
-export function toHorseProfile(horse: any, index: number): HorseProfile {
+export function toHorseProfile(horse: any, index: number): HorseProfile & { stallCode?: string | null } {
   const id = horse.id;
   const hash = hashString(id || `horse-${index}`);
 
@@ -74,8 +74,17 @@ export function toHorseProfile(horse: any, index: number): HorseProfile {
       health = 'FIT';
   }
 
-  // Deterministic local biometric defaults derived from horse ID
-  const weightKg = 450 + (hash % 100);
+  // Real PostgreSQL master data: weightKg and stallCode are preserved without hash fabrication
+  const weightKg =
+    horse.weightKg !== undefined && horse.weightKg !== null && !isNaN(Number(horse.weightKg))
+      ? Number(horse.weightKg)
+      : null;
+
+  const stallCode =
+    typeof horse.stall === 'string'
+      ? horse.stall
+      : horse.stall?.code || horse.stallCode || null;
+
   const topSpeedMps = 16.5 + ((hash >> 2) % 30) / 10;
   const hrRest = 32 + ((hash >> 4) % 12);
   const hrMax = 215 + ((hash >> 6) % 25);
@@ -98,8 +107,9 @@ export function toHorseProfile(horse: any, index: number): HorseProfile {
     coat,
     gender,
     ageYears,
-    weightKg,
-    microchip: horse.microchip || horse.microchipRfid || `985141${String(hash).padStart(9, '0').slice(0, 9)}`,
+    weightKg: weightKg as number,
+    stallCode,
+    microchip: horse.microchip || horse.microchipRfid || '',
     lifecycle,
     health,
     medicalLock: Boolean(horse.isMedicalLocked),

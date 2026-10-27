@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SCREEN_LABEL, type Screen } from "../hub/zones";
 import { onBusEvent, publish } from "../sim/bus";
 import type { HorseProfile } from "../sim/engine";
-import { randomHorse, seedHorses } from "../sim/horses";
 import { consume, deliver, initialInventory, placeOrder, type Inventory, type SupplyId } from "../sim/inventory";
 import { lockSyncPacket } from "../sim/packets";
 import {
@@ -12,13 +11,13 @@ import {
   getLastError,
 } from "../sim/socketTransport.ts";
 import { useSprites } from "../render/sprites";
-import { clearSession, getAccessToken, getCurrentUser } from "../api/client.ts";
-import { listHorses } from "../api/horsesApi.ts";
+import {
+  getWorkoutSimulationContext,
+  workoutToTrialSetup,
+  type SimulationContext,
+} from "../api/simulatorApi.ts";
 import { toHorseProfile } from "../api/horseMapper.ts";
-import { SimulatorLogin } from "./SimulatorLogin.tsx";
-import { CreateHorseModal } from "./CreateHorseModal.tsx";
 import c from "./App.module.css";
-import { AssetOverview } from "./AssetOverview";
 import { FarmHub } from "./FarmHub";
 import { RaceTab } from "./RaceTab";
 import { HorsePicker } from "./HorsePicker";
@@ -27,8 +26,6 @@ import s from "./ui.module.css";
 
 type TrackTab = "TRIAL" | "RACE";
 const NAV: Screen[] = ["HUB", "TRACK"];
-// Trang tổng quan asset chỉ dành cho người làm dự án: mở bằng ?dev
-const DEV = new URLSearchParams(window.location.search).has("dev");
 // SRS: nút điều khiển tốc độ mô phỏng 1× · 10× · 60× · Tạm dừng
 const SPEEDS = [1, 10, 60, 0];
 const FADE_MS = 450;
@@ -36,17 +33,18 @@ let announced = false; // StrictMode chạy effect 2 lần — chỉ báo ONLINE
 
 export function App() {
   const { sprites, error } = useSprites();
-  const USE_MOCK = (import.meta as any).env?.VITE_USE_MOCK === "true";
   const transportState = useTransportState();
   const transportError = getLastError();
 
-  const [currentUser, setCurrentUser] = useState<any>(() => getCurrentUser());
-  const [horses, setHorses] = useState<HorseProfile[]>(() => (USE_MOCK ? seedHorses() : []));
-  const [loadingHorses, setLoadingHorses] = useState<boolean>(!USE_MOCK && Boolean(getAccessToken()));
-  const [horsesError, setHorsesError] = useState<string | null>(null);
-  const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const query = new URLSearchParams(window.location.search);
+  const sessionId = query.get("sessionId")?.trim() || query.get("session_id")?.trim() || null;
 
-  const [selectedId, setSelectedId] = useState<string | null>("HRS-001");
+  const [simulationContext, setSimulationContext] = useState<SimulationContext | null>(null);
+  const [loadingContext, setLoadingContext] = useState<boolean>(Boolean(sessionId));
+  const [contextError, setContextError] = useState<string | null>(null);
+
+  const [horses, setHorses] = useState<HorseProfile[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [screen, setScreen] = useState<Screen>("HUB");
   const [cameFrom, setCameFrom] = useState<Screen | null>(null);
   const [trackTab, setTrackTab] = useState<TrackTab>("TRIAL");
@@ -59,51 +57,48 @@ export function App() {
   const [lastTrip, setLastTrip] = useState<{ arriveAt: number; items: SupplyId[] } | null>(null);
   const realNow = () => performance.now() / 1000;
 
-  const fetchHorses = useCallback(async () => {
-    if (USE_MOCK) {
-      const seeded = seedHorses();
-      setHorses(seeded);
-      if (seeded.length > 0) setSelectedId(seeded[0].id);
-      return;
-    }
-    if (!getAccessToken()) return;
-
-    setLoadingHorses(true);
-    setHorsesError(null);
+  const fetchContext = useCallback(async () => {
+    if (!sessionId) return;
+    setLoadingContext(true);
+    setContextError(null);
     try {
-      const beList = await listHorses(100);
-      const mapped = beList.map((h, i) => toHorseProfile(h, i));
-      setHorses(mapped);
-      if (mapped.length > 0) {
-        setSelectedId((prev) => (prev && mapped.some((m) => m.id === prev) ? prev : mapped[0].id));
+      const ctx = await getWorkoutSimulationContext(sessionId);
+      setSimulationContext(ctx);
+      const mappedHorse = toHorseProfile(ctx.horse, 0);
+      setHorses([mappedHorse]);
+      setSelectedId(mappedHorse.id);
+      if (ctx.type === "WORKOUT") {
+        setScreen("TRACK");
+        setTrackTab("TRIAL");
+      } else {
+        setScreen("HUB");
       }
     } catch (err: any) {
-      setHorsesError(err.message || "Không thể nạp danh sách ngựa từ API Backend.");
+      setContextError(err.message || "Không thể nạp dữ liệu phiên mô phỏng từ Máy chủ Backend.");
     } finally {
-      setLoadingHorses(false);
+      setLoadingContext(false);
     }
-  }, [USE_MOCK]);
+  }, [sessionId]);
 
   useEffect(() => {
-    if (currentUser || USE_MOCK) {
-      fetchHorses();
+    if (sessionId) {
+      fetchContext();
     }
-  }, [currentUser, USE_MOCK, fetchHorses]);
+  }, [sessionId, fetchContext]);
 
-  // Kết nối Socket.IO với token JWT khi đã đăng nhập
+  // Kết nối Socket.IO duy nhất bằng Main-Web-issued sessionId
   useEffect(() => {
-    const token = getAccessToken();
-    if (token) {
-      connectSimulatorTransport(token);
+    if (sessionId) {
+      connectSimulatorTransport({ sessionId });
     } else {
       disconnectSimulatorTransport();
     }
     return () => {
       disconnectSimulatorTransport();
     };
-  }, [currentUser]);
+  }, [sessionId]);
 
-  // Nhận lệnh đồng bộ khóa y tế từ Backend (chỉ VET có thẩm quyền)
+  // Nhận lệnh đồng bộ khóa y tế từ Backend theo thời gian thực
   useEffect(() => {
     return onBusEvent((entry) => {
       if (entry.event === "sys:medical_lock_sync" && entry.direction === "IN") {
@@ -179,35 +174,54 @@ export function App() {
     setHorses((list) => list.map((x) => (x.id === id ? next : x)));
   }
 
-  function handleAddHorse() {
-    if (USE_MOCK) {
-      const h = randomHorse(horses);
-      if (!h) return;
-      setHorses((list) => [...list, h]);
-      setSelectedId(h.id);
-    } else {
-      setShowCreateModal(true);
-    }
-  }
-
-  const handleHorseCreated = (newHorse: HorseProfile) => {
-    setHorses((prev) => [...prev, newHorse]);
-    setSelectedId(newHorse.id);
-  };
-
-  const handleLogout = () => {
-    disconnectSimulatorTransport();
-    clearSession();
-    setCurrentUser(null);
-    setHorses([]);
-  };
-
   const markReported = (id: string) => setReported((r) => new Set(r).add(id));
   const simScreen = screen === "TRACK";
-  if (DEV) return <AssetOverview />;
 
-  if (!USE_MOCK && !currentUser) {
-    return <SimulatorLogin onSuccess={(user) => setCurrentUser(user)} />;
+  // Truy cập trực tiếp không có sessionId: hiện thông báo an toàn, tuyệt đối không hiện form đăng nhập
+  if (!sessionId) {
+    return (
+      <div className={c.shell} style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div className={c.centerNotice} style={{ maxWidth: 520, margin: "auto", padding: "var(--sp-6)", textAlign: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-4)" }}>
+            <span className={c.logo} style={{ fontSize: "1.5rem", padding: "6px 12px", background: "var(--parchment-3)", borderRadius: "var(--radius-sm)" }}>EF</span>
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontWeight: 700, fontSize: "1.25rem" }}>EquiFlow Simulator</div>
+              <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>Trang trại ngựa đua mô phỏng v3</div>
+            </div>
+          </div>
+          <div className={s.notice} role="status" style={{ fontSize: "1rem", lineHeight: 1.6, padding: "var(--sp-4)" }}>
+            ℹ️ Vui lòng mở Trình giả lập từ Hệ thống quản lý huấn luyện (Main Web).
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Đang nạp context từ Backend
+  if (loadingContext) {
+    return (
+      <div className={c.shell} style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div className={c.centerNotice}>
+          <p className={c.loading}>Đang nạp dữ liệu phiên mô phỏng từ Máy chủ Backend…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Lỗi nạp context (session không hợp lệ / quá hạn / terminal / Backend offline): hiện lỗi rõ ràng, không fallback mock
+  if (contextError) {
+    return (
+      <div className={c.shell} style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div className={c.centerNotice} style={{ maxWidth: 560, margin: "auto" }}>
+          <p className={s.noticeDanger}>{contextError}</p>
+          <div style={{ marginTop: "var(--sp-4)", display: "flex", gap: "var(--sp-3)", justifyContent: "center" }}>
+            <button type="button" className={`${s.btn} ${s.primary}`} onClick={fetchContext}>
+              Thử tải lại
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -219,7 +233,7 @@ export function App() {
           </span>
           <span>
             <span className={c.product}>EquiFlow Simulator</span>
-            <span className={c.tagline}>Trang trại ngựa đua mô phỏng</span>
+            <span className={c.tagline}>Trang trại ngựa đua mô phỏng v3</span>
           </span>
         </button>
         <nav className={c.views} aria-label="Khu vực">
@@ -242,14 +256,12 @@ export function App() {
               : "Ngoại tuyến"}
           </span>
 
-          {currentUser && (
-            <span className={c.userBadge}>
-              👤 {currentUser.fullName || currentUser.email} ({currentUser.role})
-              <button type="button" className={c.logoutBtn} onClick={handleLogout} title="Đăng xuất">
-                Thoát
-              </button>
+          {simulationContext && (
+            <span className={c.userBadge} title={`Mã phiên: ${sessionId}`}>
+              {simulationContext.type === "WORKOUT" ? "🏃 Buổi tập" : "🩺 Khám bệnh"} · {simulationContext.horse.name}
             </span>
           )}
+
           {simScreen && (
             <>
               <span className={c.device}>
@@ -275,24 +287,6 @@ export function App() {
 
       {error && <p className={s.noticeDanger}>{error}</p>}
       {!sprites && !error && <p className={c.loading}>Đang dựng trang trại…</p>}
-      {loadingHorses && <p className={c.loading}>Đang nạp dữ liệu ngựa từ Backend API…</p>}
-      {horsesError && (
-        <div className={c.centerNotice}>
-          <p className={s.noticeDanger}>{horsesError}</p>
-          <button type="button" className={`${s.btn} ${s.primary}`} onClick={fetchHorses}>
-            Thử tải lại
-          </button>
-        </div>
-      )}
-
-      {sprites && !loadingHorses && !horsesError && horses.length === 0 && (
-        <div className={c.centerNotice}>
-          <p>Chưa có hồ sơ ngựa nào trong hệ thống.</p>
-          <button type="button" className={`${s.btn} ${s.primary} ${s.puffy}`} onClick={handleAddHorse}>
-            + Đăng ký chiến mã đầu tiên
-          </button>
-        </div>
-      )}
 
       {sprites && horses.length > 0 && screen === "HUB" && (
         <FarmHub
@@ -305,12 +299,14 @@ export function App() {
           onEnterTrack={() => go("TRACK")}
           onSelect={setSelectedId}
           onToggleLock={toggleLock}
-          onRandom={handleAddHorse}
           onIncident={markReported}
           inventory={inventory}
           onOrder={orderSupply}
           trip={trip}
           arriveFrom={cameFrom === "HUB" ? null : cameFrom}
+          initialVetOpen={simulationContext?.type === "EXAM"}
+          sessionId={sessionId}
+          targetHorseId={simulationContext?.horse?.id ?? selectedId}
         />
       )}
 
@@ -342,21 +338,24 @@ export function App() {
               <HorsePicker horses={horses} sprites={sprites} selectedId={selected?.id ?? null} onSelect={setSelectedId} />
             )}
             {screen === "TRACK" && trackTab === "TRIAL" && selected && (
-              <TrialTab horse={selected} sprites={sprites} speed={speed} onIncident={markReported} />
+              <TrialTab
+                horse={selected}
+                sprites={sprites}
+                speed={speed}
+                onIncident={markReported}
+                sessionId={sessionId}
+                initialWorkout={
+                  simulationContext?.type === "WORKOUT"
+                    ? workoutToTrialSetup(simulationContext.workout)
+                    : undefined
+                }
+              />
             )}
             {screen === "TRACK" && trackTab === "RACE" && (
               <RaceTab horses={horses} sprites={sprites} speed={speed} onIncident={markReported} />
             )}
           </main>
         </div>
-      )}
-
-      {showCreateModal && (
-        <CreateHorseModal
-          onClose={() => setShowCreateModal(false)}
-          onCreated={handleHorseCreated}
-          totalHorsesCount={horses.length}
-        />
       )}
 
       {fade && (

@@ -12,6 +12,7 @@ import {
   isEventAcknowledged,
   clearPendingRetries,
   handleBusPublish,
+  emitExamFinished,
   type SocketLike,
   type SocketFactory,
 } from './socketTransport.ts';
@@ -19,7 +20,7 @@ import { publish, getLog, clearLog } from './bus.ts';
 
 class FakeSocket implements SocketLike {
   connected = false;
-  auth: { token?: string } = {};
+  auth: { token?: string; sessionId?: string } = {};
   emitted: { event: string; payload: any; ack?: (res: any) => void; volatile?: boolean }[] = [];
   listeners: Record<string, ((...args: any[]) => void)[]> = {};
 
@@ -531,4 +532,76 @@ test('socketTransport: disconnect disposes socket and listeners', () => {
   disconnectSimulatorTransport();
   assert.equal(getTransportState(), 'OFFLINE');
   assert.equal(s.connected, false);
+});
+
+test('socketTransport: connect with sessionId passes auth.sessionId without query parameters', () => {
+  let fakeSocket: FakeSocket | null = null;
+  let passedOpts: any = null;
+  const factory: SocketFactory = (_url, opts) => {
+    fakeSocket = new FakeSocket();
+    fakeSocket.auth = opts.auth;
+    passedOpts = opts;
+    return fakeSocket;
+  };
+
+  connectSimulatorTransport({ sessionId: 'session-uuid-123' }, { socketFactory: factory });
+  assert.ok(fakeSocket);
+  const s = fakeSocket as unknown as FakeSocket;
+  assert.equal(s.auth.sessionId, 'session-uuid-123');
+  assert.equal(s.auth.token, undefined);
+  assert.equal(passedOpts.query, undefined, 'must not pass query parameters');
+
+  disconnectSimulatorTransport();
+});
+
+test('socketTransport: connect with plain sessionId string passes auth.sessionId', () => {
+  let fakeSocket: FakeSocket | null = null;
+  const factory: SocketFactory = (_url, opts) => {
+    fakeSocket = new FakeSocket();
+    fakeSocket.auth = opts.auth;
+    return fakeSocket;
+  };
+
+  connectSimulatorTransport('session-uuid-456', { socketFactory: factory });
+  assert.ok(fakeSocket);
+  const s = fakeSocket as unknown as FakeSocket;
+  assert.equal(s.auth.sessionId, 'session-uuid-456');
+  assert.equal(s.auth.token, undefined);
+
+  disconnectSimulatorTransport();
+});
+
+test('socketTransport: R-10 emitExamFinished emits exactly one outbound frame on wire and rejects duplicate emissions', async () => {
+  let fakeSocket: FakeSocket | null = null;
+  const factory: SocketFactory = () => {
+    fakeSocket = new FakeSocket();
+    return fakeSocket;
+  };
+
+  connectSimulatorTransport('mock-jwt-token', { socketFactory: factory });
+  fakeSocket!.connected = true;
+  fakeSocket!.trigger('connect');
+  fakeSocket!.emitted.length = 0;
+
+  const examPayload = {
+    session_id: 'exam-single-10',
+    horse_id: '00000000-0000-4000-a002-000000000004',
+    metrics: { weight: { value: 490, unit: 'KG' } },
+  };
+
+  const promise = emitExamFinished(examPayload);
+  assert.equal(fakeSocket!.emitted.length, 1, 'must emit exactly 1 frame over socket');
+  assert.equal(fakeSocket!.emitted[0].event, 'sim:exam_finished');
+
+  // Server responds with ACK
+  fakeSocket!.emitted[0].ack!({ accepted: true, id: 'exam-single-10' });
+  const result = await promise;
+  assert.equal(result.accepted, true);
+
+  // Subsequent call for same completed session does not emit another frame over wire
+  const secondResult = await emitExamFinished(examPayload);
+  assert.equal(secondResult.accepted, true);
+  assert.equal(fakeSocket!.emitted.length, 1, 'must not emit a second frame for finished session');
+
+  disconnectSimulatorTransport();
 });

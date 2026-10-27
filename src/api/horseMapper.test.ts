@@ -87,3 +87,21 @@ test('horseMapper: produces deterministic local defaults across reloads for iden
   assert.equal(run1.hrAlert, run2.hrAlert);
   assert.deepEqual(run1.stall, run2.stall);
 });
+
+test('horseMapper: preserves PostgreSQL weightKg and stallCode without using hash fallback', () => {
+  const beHorse: any = {
+    id: '3b5d004e-79ed-45cb-870e-bedd02b4219e',
+    horseCode: 'HR-000101',
+    name: 'Test Victory 2562',
+    weightKg: 490,
+    stall: 'A-01',
+    microchipRfid: '985043482926029',
+  };
+
+  const profile = toHorseProfile(beHorse, 0);
+
+  // PostgreSQL weight 490 must be 490, NOT 535 (from 450 + hash % 100)
+  assert.equal(profile.weightKg, 490);
+  assert.equal(profile.stallCode, 'A-01');
+  assert.equal(profile.microchip, '985043482926029');
+});

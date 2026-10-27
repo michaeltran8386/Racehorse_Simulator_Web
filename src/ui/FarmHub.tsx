@@ -28,13 +28,16 @@ interface Props {
   onEnterTrack: () => void;
   onSelect: (id: string) => void;
   onToggleLock: (id: string) => void;
-  onRandom: () => void;
+  onRandom?: () => void;
   onIncident: (horseId: string) => void;
   arriveFrom: FarmTarget | null;
   inventory: Inventory;
   onOrder: (item: SupplyId) => void;
   /** Chuyến xe giao hàng (đồng hồ performance.now, giây). */
   trip: { arriveAt: number; items: SupplyId[] } | null;
+  initialVetOpen?: boolean;
+  sessionId?: string | null;
+  targetHorseId?: string | null;
 }
 
 const nowTod = (): TimeOfDay => {
@@ -47,7 +50,7 @@ const nowTod = (): TimeOfDay => {
 };
 const clock = () => new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 
-export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onEnterTrack, onSelect, onToggleLock, onRandom, onIncident, arriveFrom, inventory, onOrder, trip }: Props) {
+export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onEnterTrack, onSelect, onToggleLock, onRandom, onIncident, arriveFrom, inventory, onOrder, trip, initialVetOpen, sessionId, targetHorseId }: Props) {
   const [tod, setTod] = useState<TimeOfDay>(nowTod);
   const [time, setTime] = useState(clock);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -59,7 +62,7 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
   const [stalls, setStalls] = useState<MockStall[]>(() => initStalls());
   const [stallOpen, setStallOpen] = useState(false);
   const [stallSel, setStallSel] = useState<string | null>(null);
-  const [vetOpen, setVetOpen] = useState(false);
+  const [vetOpen, setVetOpen] = useState(Boolean(initialVetOpen));
   const [groomOpen, setGroomOpen] = useState(false);
   const card = horses.find((h) => h.id === cardId) ?? null;
   // Ngựa bãi thả và ngựa chuồng được phân bổ ổn định danh tính
@@ -69,6 +72,12 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
 
   const locked = horses.filter((h) => h.medicalLock).length;
   const lowSupplies = SUPPLY_IDS.filter((id) => stockLevel(inventory, id) !== "OK").length;
+
+  useEffect(() => {
+    if (initialVetOpen) {
+      setVetOpen(true);
+    }
+  }, [initialVetOpen]);
 
   useEffect(() => {
     const tick = window.setInterval(() => setTime(clock()), 15_000);
@@ -204,7 +213,7 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
       )}
       {vetOpen && (
         <Popup title="Phòng khám thú y" onClose={() => setVetOpen(false)}>
-          <VetZone horses={horses} sprites={sprites} reported={reported} onToggleLock={onToggleLock} onOpenCard={openCard} />
+          <VetZone horses={horses} sprites={sprites} reported={reported} onToggleLock={onToggleLock} onOpenCard={openCard} sessionId={sessionId} targetHorseId={targetHorseId} />
         </Popup>
       )}
       {groomOpen && (
@@ -213,7 +222,7 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
         </Popup>
       )}
       {listOpen && (
-        <HorseList horses={horses} sprites={sprites} reported={reported} onOpen={openCard} onRandom={onRandom} onClose={() => setListOpen(false)} />
+        <HorseList horses={horses} sprites={sprites} reported={reported} onOpen={openCard} onRandom={onRandom || (() => {})} onClose={() => setListOpen(false)} />
       )}
       {card && (
         <HorseCard horse={card} sprites={sprites} reported={reported.has(card.id)} onToggleLock={onToggleLock} onClose={() => setCardId(null)} />

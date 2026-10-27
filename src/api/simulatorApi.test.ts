@@ -25,6 +25,8 @@ const workoutContext = {
     color: "Black",
     status: "IN_TRAINING",
     isMedicalLocked: false,
+    weightKg: 490,
+    stall: "A-01",
   },
   workout: {
     id: "workout-1",
@@ -56,6 +58,8 @@ const examContext = {
     color: "Black",
     status: "UNDER_OBSERVATION",
     isMedicalLocked: true,
+    weightKg: 490,
+    stall: "A-01",
   },
 };
 
@@ -365,4 +369,10 @@ test("getWorkoutSimulationContext surfaces network failure when backend is unava
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("validateSimulationContext preserves PostgreSQL horse weightKg and stall", () => {
+  const validated = validateSimulationContext("server-session-1", workoutContext);
+  assert.equal(validated.horse.weightKg, 490);
+  assert.equal(validated.horse.stall, "A-01");
 });

@@ -6,9 +6,14 @@ export type TransportEvent = SimEvent | 'sim:exam_finished';
 
 export type TransportState = 'OFFLINE' | 'CONNECTING' | 'ONLINE';
 
+export interface TransportAuth {
+  sessionId?: string;
+  token?: string;
+}
+
 export interface SocketLike {
   connected: boolean;
-  auth: { token?: string };
+  auth: { token?: string; sessionId?: string };
   volatile?: {
     emit: (event: string, payload: any) => void;
   };
@@ -210,7 +215,7 @@ export function flushPendingRetries(): void {
 }
 
 export function connectSimulatorTransport(
-  token?: string,
+  auth?: string | TransportAuth,
   options?: TransportOptions,
 ): void {
   if (currentSocket) {
@@ -225,8 +230,20 @@ export function connectSimulatorTransport(
   const baseUrl = options?.url || (typeof window !== 'undefined' && (import.meta as any).env?.VITE_SOCKET_URL) || 'http://localhost:3000/simulator';
   const factory = options?.socketFactory || ((url: string, opts: any) => io(url, opts) as unknown as SocketLike);
 
+  let authPayload: { token?: string; sessionId?: string } = {};
+  if (typeof auth === 'string' && auth.trim()) {
+    const trimmed = auth.trim();
+    if (trimmed.split('.').length === 3) {
+      authPayload = { token: trimmed };
+    } else {
+      authPayload = { sessionId: trimmed };
+    }
+  } else if (auth && typeof auth === 'object') {
+    authPayload = { ...auth };
+  }
+
   const socket = factory(baseUrl, {
-    auth: token ? { token } : {},
+    auth: authPayload,
     transports: ['websocket', 'polling'],
     autoConnect: true,
   });
@@ -324,8 +341,12 @@ export function handleBusPublish(event: TransportEvent, payload: Record<string, 
       return;
     }
 
-    // 3. For session_finished, prevent duplicate finished event for the same session
-    if (event === 'sim:session_finished' && typeof payload.session_id === 'string' && payload.session_id) {
+    // 3. For session_finished or exam_finished, prevent duplicate finished event for the same session
+    if (
+      (event === 'sim:session_finished' || event === 'sim:exam_finished') &&
+      typeof payload.session_id === 'string' &&
+      payload.session_id
+    ) {
       if (finishedSessions.has(payload.session_id)) {
         return;
       }
@@ -359,4 +380,46 @@ export function handleBusPublish(event: TransportEvent, payload: Record<string, 
   if (currentSocket && currentSocket.connected) {
     currentSocket.emit(event, payload);
   }
+}
+
+/**
+ * Emits sim:exam_finished with Socket.IO ACK awaiting and error reporting.
+ */
+export function emitExamFinished(
+  packet: Record<string, unknown>,
+): Promise<{ accepted: boolean; code?: string; message?: string }> {
+  return new Promise((resolve, reject) => {
+    if (!currentSocket || !currentSocket.connected) {
+      reject(new Error("Socket chưa kết nối với máy chủ Backend."));
+      return;
+    }
+    const sessionId = typeof packet.session_id === 'string' ? packet.session_id.trim() : '';
+    if (sessionId && finishedSessions.has(sessionId)) {
+      resolve({ accepted: true, message: "Session already finished" });
+      return;
+    }
+    const eventId = resolveEventId("sim:exam_finished", packet);
+    if (acknowledgedEventIds.has(eventId)) {
+      resolve({ accepted: true, message: "Exam already acknowledged" });
+      return;
+    }
+
+    const wirePayload: Record<string, unknown> = { ...packet };
+    delete wirePayload.event_id;
+    delete wirePayload.packet_id;
+
+    currentSocket.emit("sim:exam_finished", wirePayload, (ack: any) => {
+      if (ack && ack.accepted === true) {
+        acknowledgedEventIds.add(eventId);
+        if (sessionId) finishedSessions.add(sessionId);
+        pendingMessages.delete(eventId);
+        resolve(ack);
+      } else {
+        const errMsg = ack?.message || ack?.code || "Kết quả khám bị máy chủ từ chối.";
+        lastError = `Server rejected sim:exam_finished: ${ack?.code || 'UNKNOWN_ERROR'}`;
+        notifyState();
+        reject(new Error(errMsg));
+      }
+    });
+  });
 }

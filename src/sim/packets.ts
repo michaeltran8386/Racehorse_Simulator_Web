@@ -112,7 +112,7 @@ export function examFinishedPacket(sessionId: string, h: HorseProfile) {
       temperature: { value: r1(37.7 + (1 - h.fitness) * 2), unit: "CELSIUS" },
       resting_heart_rate: { value: Math.round(h.hrRest), unit: "BPM" },
       respiratory_rate: { value: Math.round(10 + (1 - h.fitness) * 12), unit: "BREATHS_PER_MINUTE" },
-      weight: { value: h.weightKg, unit: "KG" },
+      weight: typeof h.weightKg === "number" && !isNaN(h.weightKg) ? { value: h.weightKg, unit: "KG" } : { value: null, unit: "KG" },
     },
   };
 }
