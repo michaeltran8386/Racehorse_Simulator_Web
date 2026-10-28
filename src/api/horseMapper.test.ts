@@ -105,3 +105,84 @@ test('horseMapper: preserves PostgreSQL weightKg and stallCode without using has
   assert.equal(profile.stallCode, 'A-01');
   assert.equal(profile.microchip, '985043482926029');
 });
+
+test('TASK-015: horseMapper preserves masked 15-digit microchip and active stall from context', () => {
+  const groomContextHorse: any = {
+    id: 'e2a56c70-1b20-4a81-9f94-d4551b3f94aa',
+    horseCode: 'H-0005',
+    name: 'Groom Assigned Horse',
+    breed: 'Thoroughbred',
+    dob: '2021-02-01T00:00:00.000Z',
+    gender: 'GELDING',
+    color: 'BAY',
+    status: 'IN_TRAINING',
+    isMedicalLocked: false,
+    weightKg: 475,
+    stall: 'B-04',
+    microchipRfid: '***********0001',
+  };
+
+  const profile = toHorseProfile(groomContextHorse, 0);
+
+  // Key is horse UUID
+  assert.equal(profile.id, 'e2a56c70-1b20-4a81-9f94-d4551b3f94aa');
+  // 15-character masked microchip preserved
+  assert.equal(profile.microchip, '***********0001');
+  assert.equal(profile.microchip.length, 15);
+  // Active stall code preserved
+  assert.equal(profile.stallCode, 'B-04');
+  assert.equal(profile.weightKg, 475);
+});
+
+test('TASK-015: horseMapper maps direct catalogue horses from Backend preserving UUID, 15-digit microchip, stallCode and weight', () => {
+  const catalogueHorses: any[] = [
+    {
+      id: '00000000-0000-4000-a002-000000000001',
+      name: 'QA Zephyr Wind',
+      horseCode: 'QA-HR-000001',
+      microchipRfid: '985141099000001',
+      microchip: '985141099000001',
+      breed: 'Thoroughbred',
+      color: 'Bay',
+      gender: 'Colt',
+      dob: '2021-03-15T00:00:00.000Z',
+      status: 'ACTIVE',
+      isMedicalLocked: false,
+      weightKg: 490,
+      stallCode: 'STALL-QA01',
+      zone: 'Zone QA - Test Barn',
+    },
+    {
+      id: '00000000-0000-4000-a002-000000000010',
+      name: 'QA Shadow Runner',
+      horseCode: 'QA-HR-000010',
+      microchipRfid: '985141099000010',
+      microchip: '985141099000010',
+      breed: 'Thoroughbred',
+      color: 'Grey',
+      gender: 'Colt',
+      dob: '2021-03-15T00:00:00.000Z',
+      status: 'IN_TRAINING',
+      isMedicalLocked: false,
+      weightKg: 505,
+      stallCode: null,
+      zone: null,
+    },
+  ];
+
+  const mapped = catalogueHorses.map((h, i) => toHorseProfile(h, i));
+
+  assert.equal(mapped.length, 2);
+  assert.equal(mapped[0].id, '00000000-0000-4000-a002-000000000001');
+  assert.equal(mapped[0].name, 'QA Zephyr Wind');
+  assert.equal(mapped[0].microchip, '985141099000001');
+  assert.equal(mapped[0].stallCode, 'STALL-QA01');
+  assert.equal(mapped[0].weightKg, 490);
+  assert.equal(mapped[0].medicalLock, false);
+
+  assert.equal(mapped[1].id, '00000000-0000-4000-a002-000000000010');
+  assert.equal(mapped[1].name, 'QA Shadow Runner');
+  assert.equal(mapped[1].microchip, '985141099000010');
+  assert.equal(mapped[1].stallCode, null);
+  assert.equal(mapped[1].weightKg, 505);
+});

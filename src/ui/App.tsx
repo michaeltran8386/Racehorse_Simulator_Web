@@ -17,6 +17,7 @@ import {
   type SimulationContext,
 } from "../api/simulatorApi.ts";
 import { toHorseProfile } from "../api/horseMapper.ts";
+import { listHorses } from "../api/horsesApi.ts";
 import c from "./App.module.css";
 import { FarmHub } from "./FarmHub";
 import { RaceTab } from "./RaceTab";
@@ -40,7 +41,7 @@ export function App() {
   const sessionId = query.get("sessionId")?.trim() || query.get("session_id")?.trim() || null;
 
   const [simulationContext, setSimulationContext] = useState<SimulationContext | null>(null);
-  const [loadingContext, setLoadingContext] = useState<boolean>(Boolean(sessionId));
+  const [loadingContext, setLoadingContext] = useState<boolean>(true);
   const [contextError, setContextError] = useState<string | null>(null);
 
   const [horses, setHorses] = useState<HorseProfile[]>([]);
@@ -58,33 +59,43 @@ export function App() {
   const realNow = () => performance.now() / 1000;
 
   const fetchContext = useCallback(async () => {
-    if (!sessionId) return;
     setLoadingContext(true);
     setContextError(null);
     try {
-      const ctx = await getWorkoutSimulationContext(sessionId);
-      setSimulationContext(ctx);
-      const mappedHorse = toHorseProfile(ctx.horse, 0);
-      setHorses([mappedHorse]);
-      setSelectedId(mappedHorse.id);
-      if (ctx.type === "WORKOUT") {
-        setScreen("TRACK");
-        setTrackTab("TRIAL");
+      if (sessionId) {
+        const ctx = await getWorkoutSimulationContext(sessionId);
+        setSimulationContext(ctx);
+        const mappedHorse = toHorseProfile(ctx.horse, 0);
+        setHorses([mappedHorse]);
+        setSelectedId(mappedHorse.id);
+        if (ctx.type === "WORKOUT") {
+          setScreen("TRACK");
+          setTrackTab("TRIAL");
+        } else {
+          setScreen("HUB");
+        }
       } else {
+        // Direct port 5175 access: loads complete real horse/stall catalogue from Backend without login
+        const rawHorses = await listHorses();
+        if (!Array.isArray(rawHorses) || rawHorses.length === 0) {
+          throw new Error("Không thể nạp danh mục ngựa từ máy chủ Backend. Vui lòng kiểm tra kết nối dịch vụ.");
+        }
+        const mapped = rawHorses.map((h, i) => toHorseProfile(h, i));
+        setSimulationContext(null);
+        setHorses(mapped);
+        setSelectedId(mapped[0]?.id || null);
         setScreen("HUB");
       }
     } catch (err: any) {
-      setContextError(err.message || "Không thể nạp dữ liệu phiên mô phỏng từ Máy chủ Backend.");
+      setContextError(err.message || "Không thể nạp dữ liệu từ Máy chủ Backend.");
     } finally {
       setLoadingContext(false);
     }
   }, [sessionId]);
 
   useEffect(() => {
-    if (sessionId) {
-      fetchContext();
-    }
-  }, [sessionId, fetchContext]);
+    fetchContext();
+  }, [fetchContext]);
 
   // Kết nối Socket.IO duy nhất bằng Main-Web-issued sessionId
   useEffect(() => {
@@ -177,43 +188,23 @@ export function App() {
   const markReported = (id: string) => setReported((r) => new Set(r).add(id));
   const simScreen = screen === "TRACK";
 
-  // Truy cập trực tiếp không có sessionId: hiện thông báo an toàn, tuyệt đối không hiện form đăng nhập
-  if (!sessionId) {
-    return (
-      <div className={c.shell} style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-        <div className={c.centerNotice} style={{ maxWidth: 520, margin: "auto", padding: "var(--sp-6)", textAlign: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-4)" }}>
-            <span className={c.logo} style={{ fontSize: "1.5rem", padding: "6px 12px", background: "var(--parchment-3)", borderRadius: "var(--radius-sm)" }}>EF</span>
-            <div style={{ textAlign: "left" }}>
-              <div style={{ fontWeight: 700, fontSize: "1.25rem" }}>EquiFlow Simulator</div>
-              <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>Trang trại ngựa đua mô phỏng v3</div>
-            </div>
-          </div>
-          <div className={s.notice} role="status" style={{ fontSize: "1rem", lineHeight: 1.6, padding: "var(--sp-4)" }}>
-            ℹ️ Vui lòng mở Trình giả lập từ Hệ thống quản lý huấn luyện (Main Web).
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Đang nạp context từ Backend
+  // Đang nạp dữ liệu từ Backend
   if (loadingContext) {
     return (
       <div className={c.shell} style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
         <div className={c.centerNotice}>
-          <p className={c.loading}>Đang nạp dữ liệu phiên mô phỏng từ Máy chủ Backend…</p>
+          <p className={c.loading}>Đang nạp dữ liệu từ Máy chủ Backend…</p>
         </div>
       </div>
     );
   }
 
-  // Lỗi nạp context (session không hợp lệ / quá hạn / terminal / Backend offline): hiện lỗi rõ ràng, không fallback mock
+  // Lỗi nạp dữ liệu (session không hợp lệ / Backend offline): hiện lỗi rõ ràng, không fallback mock
   if (contextError) {
     return (
       <div className={c.shell} style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
         <div className={c.centerNotice} style={{ maxWidth: 560, margin: "auto" }}>
-          <p className={s.noticeDanger}>{contextError}</p>
+          <p className={s.noticeDanger} role="status">{contextError}</p>
           <div style={{ marginTop: "var(--sp-4)", display: "flex", gap: "var(--sp-3)", justifyContent: "center" }}>
             <button type="button" className={`${s.btn} ${s.primary}`} onClick={fetchContext}>
               Thử tải lại
@@ -256,9 +247,13 @@ export function App() {
               : "Ngoại tuyến"}
           </span>
 
-          {simulationContext && (
+          {simulationContext ? (
             <span className={c.userBadge} title={`Mã phiên: ${sessionId}`}>
               {simulationContext.type === "WORKOUT" ? "🏃 Buổi tập" : "🩺 Khám bệnh"} · {simulationContext.horse.name}
+            </span>
+          ) : (
+            <span className={c.userBadge} title="Chế độ trực tiếp: xem danh mục ngựa thực tế từ Backend">
+              📋 Danh mục trực tiếp ({horses.length} ngựa)
             </span>
           )}
 
@@ -343,7 +338,7 @@ export function App() {
                 sprites={sprites}
                 speed={speed}
                 onIncident={markReported}
-                sessionId={sessionId}
+                sessionId={sessionId ?? undefined}
                 initialWorkout={
                   simulationContext?.type === "WORKOUT"
                     ? workoutToTrialSetup(simulationContext.workout)
