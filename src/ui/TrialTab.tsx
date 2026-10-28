@@ -91,6 +91,7 @@ export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initial
   // Khi khóa y tế được đồng bộ tới (R-5):
   // Lập tức vô hiệu hóa bài tập nặng và chuyển về Nhẹ.
   // Nếu bài Vừa/Nặng đang chạy dở, lập tức chuyển ngay sang trạng thái an toàn (Nhẹ) để không phát thêm telemetry nặng.
+  // Khi khóa được gỡ (lift), ngựa trở về trạng thái hợp lệ nhưng không tự ý kích hoạt lại bài nặng không an toàn.
   useEffect(() => {
     if (blocked !== null) {
       if (intensity !== "LIGHT") {
