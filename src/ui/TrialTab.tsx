@@ -129,6 +129,14 @@ export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initial
   }
 
   function stop() {
+    const run = runRef.current;
+    if (run && !anim.current.finishedSent) {
+      run.status = "ABORTED_INJURY";
+      run.v = 0;
+      run.pace = 0;
+      finish(run);
+      return;
+    }
     runRef.current = null;
     runningHorseId.current = null;
     tickerRef.current.reset();
