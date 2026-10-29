@@ -1,76 +1,359 @@
-// Kho vật tư (mô hình thuần, chưa nối Backend): tồn kho giảm theo số ngựa × thời gian mô phỏng,
-// đặt hàng → xe tải giao sau DELIVERY_S giây (đồng hồ thật, để xem được xe chạy ở mọi tốc độ) và bù đầy kho. Không ảnh hưởng sức khỏe ngựa (quyết định 19/10/2026).
+import type { StockItem } from '../api/inventoryApi.ts';
 
-export type SupplyId = "HAY" | "FEED" | "BEDDING" | "MEDS" | "SHOES";
-export type StockLevel = "OK" | "LOW" | "OUT";
+export type SupplyId = string;
+export type StockLevel = 'OK' | 'LOW' | 'OUT';
 
-interface SupplySpec {
-  label: string;
-  unit: string;
-  capacity: number;
-  /** Lượng dùng mỗi ngựa mỗi giây mô phỏng. */
-  perHorsePerSec: number;
-}
-
-// shortcut: tốc độ tiêu hao được tăng tốc để thấy kho vơi trong vài phút demo (10 ngựa, 1×: cỏ khô cạn sau ~5 phút);
-// khi nối kho thật của Backend thì thay bằng định mức/ngày.
-export const SUPPLIES: Record<SupplyId, SupplySpec> = {
-  HAY: { label: "Cỏ khô", unit: "kg", capacity: 600, perHorsePerSec: 0.2 },
-  FEED: { label: "Cám", unit: "kg", capacity: 250, perHorsePerSec: 0.06 },
-  BEDDING: { label: "Rơm lót chuồng", unit: "kg", capacity: 400, perHorsePerSec: 0.1 },
-  MEDS: { label: "Thuốc & băng", unit: "hộp", capacity: 30, perHorsePerSec: 0.004 },
-  SHOES: { label: "Móng sắt", unit: "bộ", capacity: 12, perHorsePerSec: 0.0012 },
-};
-
-export const SUPPLY_IDS = Object.keys(SUPPLIES) as SupplyId[];
 export const DELIVERY_S = 8;
-const LOW_RATIO = 0.25;
+export const DELIVERY_TIMEOUT_S = 20;
 
-export interface SupplyOrder {
-  id: number;
-  item: SupplyId;
-  qty: number;
-  arriveAt: number;
+export type RealStockItem = StockItem;
+
+export interface InboundDeliveryOrder {
+  id: string; // requestId
+  requestId: string;
+  requestNumber: string;
+  zoneId: string;
+  supplyId: string;
+  supplyCode: string;
+  supplyName: string;
+  category: string;
+  unit: string;
+  approvedQuantity: number;
+  dispatchedAt: number; // ms timestamp
+  animationEndsAt: number; // ms timestamp (dispatchedAt + 8000)
+  fallbackAt: number; // ms timestamp (dispatchedAt + 20000)
+  arriveAt: number; // wall-clock seconds for truck animation (performance.now() / 1000)
+  ackCapability?: string;
+  acked?: boolean;
+  status: 'DELIVERING';
 }
+
+export type SupplyOrder = InboundDeliveryOrder;
 
 export interface Inventory {
-  stock: Record<SupplyId, number>;
-  orders: SupplyOrder[];
-  nextOrderId: number;
+  stocks: RealStockItem[];
+  orders: InboundDeliveryOrder[];
+  /** Backwards-compatible map: supplyId or supplyCode -> quantity */
+  stock: Record<string, number>;
 }
 
 export function initialInventory(): Inventory {
-  const stock = {} as Record<SupplyId, number>;
-  for (const id of SUPPLY_IDS) stock[id] = SUPPLIES[id].capacity;
-  return { stock, orders: [], nextOrderId: 1 };
+  return {
+    stocks: [],
+    orders: [],
+    stock: {
+      HAY: 0,
+      FEED: 0,
+      BEDDING: 0,
+      MEDS: 0,
+      SHOES: 0,
+    },
+  };
 }
 
-export function consume(inv: Inventory, horses: number, simSeconds: number): Inventory {
-  if (horses <= 0 || simSeconds <= 0) return inv;
-  const stock = { ...inv.stock };
-  for (const id of SUPPLY_IDS) stock[id] = Math.max(0, stock[id] - SUPPLIES[id].perHorsePerSec * horses * simSeconds);
-  return { ...inv, stock };
+export function buildInventory(
+  stocks: RealStockItem[],
+  orders: InboundDeliveryOrder[] = [],
+): Inventory {
+  const stock: Record<string, number> = {
+    HAY: 0,
+    FEED: 0,
+    BEDDING: 0,
+    MEDS: 0,
+    SHOES: 0,
+  };
+
+  for (const s of stocks) {
+    stock[s.id] = s.quantity;
+    stock[s.supplyId] = s.quantity;
+    stock[s.supplyCode] = s.quantity;
+
+    // Provide icon-key aliases for sprite animation in FarmMapCanvas
+    const iconKey = mapSupplyToIconKey(s.supplyCode, s.category);
+    stock[iconKey] = Math.max(stock[iconKey] ?? 0, s.quantity);
+  }
+
+  return {
+    stocks,
+    orders,
+    stock,
+  };
 }
 
-export function stockLevel(inv: Inventory, id: SupplyId): StockLevel {
-  const v = inv.stock[id];
-  if (v <= 0) return "OUT";
-  return v < SUPPLIES[id].capacity * LOW_RATIO ? "LOW" : "OK";
+export function stockLevel(item: RealStockItem): StockLevel {
+  if (item.quantity <= 0) return 'OUT';
+  if (item.capacity !== null && item.capacity > 0) {
+    return item.quantity < item.capacity * 0.25 ? 'LOW' : 'OK';
+  }
+  if (item.minThreshold > 0) {
+    return item.quantity <= item.minThreshold ? 'LOW' : 'OK';
+  }
+  return 'OK';
 }
 
-/** Đặt đủ lượng để bù đầy kho; mỗi món chỉ một đơn đang giao, kho đầy thì không đặt. Đơn đặt khi xe đang tới thì đi chung chuyến. */
-export function placeOrder(inv: Inventory, item: SupplyId, now: number): Inventory {
-  const qty = Math.ceil(SUPPLIES[item].capacity - inv.stock[item]);
-  if (qty <= 0 || inv.orders.some((o) => o.item === item)) return inv;
-  const order = { id: inv.nextOrderId, item, qty, arriveAt: inv.orders[0]?.arriveAt ?? now + DELIVERY_S };
-  return { ...inv, orders: [...inv.orders, order], nextOrderId: inv.nextOrderId + 1 };
+/**
+ * Định dạng số lượng tồn kho hiển thị với tối đa 2 chữ số thập phân, bảo toàn số thực tế (vd: 25.25 -> "25.25", không làm tròn thành 26).
+ */
+export function formatStockQuantity(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  if (Number.isInteger(rounded)) {
+    return String(rounded);
+  }
+  return String(rounded);
 }
 
-/** Nhận các đơn đã tới giờ; trả lại chính `inv` khi chưa có đơn nào tới. */
-export function deliver(inv: Inventory, now: number): { inventory: Inventory; arrived: SupplyOrder[] } {
-  const arrived = inv.orders.filter((o) => o.arriveAt <= now);
-  if (arrived.length === 0) return { inventory: inv, arrived };
-  const stock = { ...inv.stock };
-  for (const o of arrived) stock[o.item] = Math.min(SUPPLIES[o.item].capacity, stock[o.item] + o.qty);
-  return { inventory: { ...inv, stock, orders: inv.orders.filter((o) => o.arriveAt > now) }, arrived };
+export function stockLevelById(inv: Inventory, id: string): StockLevel {
+  const item = inv.stocks.find(
+    (s) => s.supplyId === id || s.supplyCode === id || s.id === id,
+  );
+  if (item) return stockLevel(item);
+  const qty = inv.stock[id] ?? 0;
+  if (qty <= 0) return 'OUT';
+  return 'OK';
+}
+
+/**
+ * Maps any backend supply code or category to one of the 5 canonical sprite icons in supplyIcons.ts
+ */
+export function mapSupplyToIconKey(
+  code: string,
+  category?: string,
+): 'HAY' | 'FEED' | 'BEDDING' | 'MEDS' | 'SHOES' {
+  const c = (code || '').toUpperCase();
+  const cat = (category || '').toUpperCase();
+
+  if (cat === 'FORAGE' || c.includes('HAY') || c.includes('GRASS') || c.includes('CO')) {
+    return 'HAY';
+  }
+  if (cat === 'BEDDING' || c.includes('BED') || c.includes('STRAW') || c.includes('ROM')) {
+    return 'BEDDING';
+  }
+  if (
+    cat === 'MEDICATION' ||
+    cat === 'MEDICAL' ||
+    c.includes('MED') ||
+    c.includes('DRUG') ||
+    c.includes('THUOC') ||
+    c.includes('BAND')
+  ) {
+    return 'MEDS';
+  }
+  if (
+    cat === 'EQUIPMENT' ||
+    cat === 'TACK' ||
+    c.includes('SHOE') ||
+    c.includes('HOOF') ||
+    c.includes('MONG')
+  ) {
+    return 'SHOES';
+  }
+  return 'FEED';
+}
+
+/**
+ * Registers an incoming delivery order (from sys:supply_delivery_start or sys:active_deliveries)
+ * Deduplicates strictly by requestId.
+ * R-3: If the order already exists but lacks ackCapability (e.g. was injected by REST snapshot
+ * before the socket event arrived), the capability is merged in without duplicating the order.
+ */
+export function addInboundDelivery(
+  inv: Inventory,
+  order: InboundDeliveryOrder,
+): Inventory {
+  const existingIndex = inv.orders.findIndex((o) => o.requestId === order.requestId);
+  if (existingIndex >= 0) {
+    // Merge ackCapability from the socket event into the existing REST-snapshot order
+    const existing = inv.orders[existingIndex];
+    if (!existing.ackCapability && order.ackCapability) {
+      const merged = { ...existing, ackCapability: order.ackCapability };
+      const nextOrders = [...inv.orders];
+      nextOrders[existingIndex] = merged;
+      return { ...inv, orders: nextOrders };
+    }
+    // Exact duplicate: already present with capability, no change
+    return inv;
+  }
+  return {
+    ...inv,
+    orders: [...inv.orders, order],
+  };
+}
+
+/**
+ * Ticks active deliveries according to wall-clock time.
+ * When nowSeconds >= arriveAt (8 seconds of animation reached the barn door) and not yet acked,
+ * fires onArrived(order) to emit sim:supply_delivery_ack.
+ */
+export function tickDeliveries(
+  inv: Inventory,
+  nowSeconds: number,
+  nowMs: number,
+  onArrived?: (order: InboundDeliveryOrder) => void,
+): { inventory: Inventory; arrived: InboundDeliveryOrder[] } {
+  const arrived: InboundDeliveryOrder[] = [];
+  let changed = false;
+
+  const nextOrders = inv.orders.map((o) => {
+    const isArrived =
+      nowSeconds >= o.arriveAt || (o.dispatchedAt > 0 && nowMs >= o.dispatchedAt + 8000);
+
+    // R-3: Do not mark ACK successful merely because local animation ended!
+    // Only fire onArrived and mark acked: true if BOTH animation ended AND ackCapability is present!
+    if (isArrived && o.ackCapability && !o.acked) {
+      changed = true;
+      const updatedOrder = { ...o, acked: true };
+      arrived.push(updatedOrder);
+      if (onArrived) {
+        onArrived(updatedOrder);
+      }
+      return updatedOrder;
+    }
+    return o;
+  });
+
+  return {
+    inventory: changed ? { ...inv, orders: nextOrders } : inv,
+    arrived,
+  };
+}
+
+/**
+ * R-3: Reconciles local pending orders against authoritative Backend activeDeliveries.
+ * Any local order whose requestId is no longer active on Backend (completed or cancelled) is removed.
+ * Active orders present on Backend are preserved or added without duplicating or resetting progress.
+ */
+export function reconcileAuthoritativeDeliveries(
+  inv: Inventory,
+  backendActiveDeliveries: Array<{
+    requestId: string;
+    requestNumber?: string;
+    zoneId: string;
+    supplyId: string;
+    supplyCode: string;
+    supplyName: string;
+    category: string;
+    unit: string;
+    approvedQuantity: number;
+    dispatchedAt: string | number;
+    animationEndsAt: string | number;
+    fallbackAt: string | number;
+    ackCapability?: string;
+  }>,
+  nowSec: number = performance.now() / 1000,
+  wallClockNowMs: number = Date.now(),
+): Inventory {
+  const activeMap = new Map(backendActiveDeliveries.map((d) => [d.requestId, d]));
+
+  // 1. Remove local orders that are no longer in Backend's active deliveries (completed/cancelled)
+  const remainingOrders = inv.orders.filter((o) => activeMap.has(o.requestId));
+
+  // 2. Add or update active deliveries from Backend
+  let reconciledInv: Inventory = { ...inv, orders: remainingOrders };
+
+  for (const ad of backendActiveDeliveries) {
+    const existing = remainingOrders.find((o) => o.requestId === ad.requestId);
+    if (!existing) {
+      const dispatchedAtMs = new Date(ad.dispatchedAt).getTime();
+      const endsAtMs = new Date(ad.animationEndsAt).getTime();
+      const fallbackAtMs = new Date(ad.fallbackAt).getTime();
+      const remainingMs = Math.max(0, endsAtMs - wallClockNowMs);
+      const arriveAt = nowSec + remainingMs / 1000;
+
+      const newOrder: InboundDeliveryOrder = {
+        id: ad.requestId,
+        requestId: ad.requestId,
+        requestNumber: ad.requestNumber || '',
+        zoneId: ad.zoneId,
+        supplyId: ad.supplyId,
+        supplyCode: ad.supplyCode,
+        supplyName: ad.supplyName,
+        category: ad.category,
+        unit: ad.unit,
+        approvedQuantity: ad.approvedQuantity,
+        dispatchedAt: dispatchedAtMs,
+        animationEndsAt: endsAtMs,
+        fallbackAt: fallbackAtMs,
+        arriveAt,
+        ackCapability: ad.ackCapability,
+        status: 'DELIVERING',
+      };
+      reconciledInv = addInboundDelivery(reconciledInv, newOrder);
+    } else if (!existing.ackCapability && ad.ackCapability) {
+      reconciledInv = addInboundDelivery(reconciledInv, {
+        ...existing,
+        ackCapability: ad.ackCapability,
+      });
+    }
+  }
+
+  return reconciledInv;
+}
+
+/**
+ * Applies authoritative delivery completion broadcast (sys:supply_delivery_completed).
+ * Updates PostgreSQL stock balance in state and removes completed delivery order.
+ */
+export function applyDeliveryCompleted(
+  inv: Inventory,
+  payload: {
+    requestId: string;
+    supplyId: string;
+    zoneId: string;
+    balance: number;
+  },
+): Inventory {
+  const nextOrders = inv.orders.filter((o) => o.requestId !== payload.requestId);
+
+  const nextStocks = inv.stocks.map((s) => {
+    if (s.supplyId === payload.supplyId && s.zoneId === payload.zoneId) {
+      return { ...s, quantity: payload.balance };
+    }
+    return s;
+  });
+
+  const nextStock = { ...inv.stock };
+  nextStock[payload.supplyId] = payload.balance;
+  const matched = inv.stocks.find(
+    (s) => s.supplyId === payload.supplyId && s.zoneId === payload.zoneId,
+  );
+  if (matched) {
+    nextStock[matched.supplyCode] = payload.balance;
+    const iconKey = mapSupplyToIconKey(matched.supplyCode, matched.category);
+    nextStock[iconKey] = payload.balance;
+  }
+
+  return {
+    ...inv,
+    stocks: nextStocks,
+    orders: nextOrders,
+    stock: nextStock,
+  };
+}
+
+/**
+ * Legacy compatibility stubs for UI/components if referenced
+ */
+export const SUPPLY_IDS = ['HAY', 'FEED', 'BEDDING', 'MEDS', 'SHOES'] as const;
+export const SUPPLIES: Record<
+  string,
+  { label: string; unit: string; capacity: number }
+> = {
+  HAY: { label: 'Cỏ khô', unit: 'kg', capacity: 600 },
+  FEED: { label: 'Cám', unit: 'kg', capacity: 250 },
+  BEDDING: { label: 'Rơm lót chuồng', unit: 'kg', capacity: 400 },
+  MEDS: { label: 'Thuốc & băng', unit: 'hộp', capacity: 30 },
+  SHOES: { label: 'Móng sắt', unit: 'bộ', capacity: 12 },
+};
+
+/** Eliminated local mock consumption - returns inventory unchanged */
+export function consume(inv: Inventory, _horses: number, _simSeconds: number): Inventory {
+  return inv;
+}
+
+/** Backwards-compatible delivery delivery tick */
+export function deliver(
+  inv: Inventory,
+  nowSeconds: number,
+): { inventory: Inventory; arrived: InboundDeliveryOrder[] } {
+  return tickDeliveries(inv, nowSeconds, Date.now());
 }

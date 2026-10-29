@@ -11,7 +11,9 @@ function Root() {
   const typeParam = (query.get("type") || query.get("sessionType") || "").trim().toUpperCase();
 
   // Đồng bộ tức thời nếu có type=EXAM trên URL; hoặc kiểm tra context nếu có sessionId
-  const [bypassIntro, setBypassIntro] = useState<boolean>(() => typeParam === "EXAM");
+  const [bypassIntro, setBypassIntro] = useState<boolean>(
+    () => typeParam === "EXAM" || query.get("bypassIntro") === "true" || query.get("bypassIntro") === "1",
+  );
 
   useEffect(() => {
     if (bypassIntro || !sessionId) return;

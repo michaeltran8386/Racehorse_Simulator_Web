@@ -6,6 +6,7 @@ import { advanceAmbientClock } from "../hub/ambientScene";
 import { paddockHorse, paddockHorseAt, truckPose, TRUCK_UNLOAD_S } from "../hub/paths";
 import { DELIVERY_S, type SupplyId } from "../sim/inventory";
 import { drawRect, VEHICLE_RECT } from "../render/sprites";
+import { audio } from "../audio/audioManager";
 import { SUPPLY_ICON } from "./supplyIcons";
 import type { HorseProfile } from "../sim/engine";
 import type { StableHorseAssignment } from "../hub/farmPopulation";
@@ -206,6 +207,7 @@ export function FarmMapCanvas({ sprites, tod, hoveredId, onHover, goTo, onEnter,
   function activate(object: FarmObject) {
     if (locked) return;
     setLocked(true);
+    audio.playSfx("building-select");
     onHover(object.id);
     if (!matchMedia("(prefers-reduced-motion: reduce)").matches) pop.current = { id: object.id, t0: performance.now() };
     // Đường đua có màn riêng → phóng sát vào trước khi chuyển cảnh; các khu khác chỉ lướt tới rồi mở bảng nổi

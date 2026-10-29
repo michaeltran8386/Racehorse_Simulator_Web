@@ -1,6 +1,7 @@
 // Bảng nổi kiểu Hay Day trên <dialog> gốc: showModal() lo giữ focus, Esc và trả focus về nút đã mở.
 // Mở: nảy lên; đóng: thu lại rồi mới gọi onClose (cha gỡ component). Bản đồ phía sau vẫn chạy.
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { audio } from "../audio/audioManager";
 import c from "./Popup.module.css";
 
 const CLOSE_MS = 180;
@@ -18,11 +19,15 @@ export function Popup({ title, onClose, children }: Props) {
 
   useEffect(() => {
     const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
+    if (dialog && !dialog.open) {
+      dialog.showModal();
+      audio.playSfx("building-open");
+    }
   }, []);
 
   useEffect(() => {
     if (!closing) return;
+    audio.playSfx("ui-close");
     const t = window.setTimeout(() => {
       ref.current?.close();
       onClose();
