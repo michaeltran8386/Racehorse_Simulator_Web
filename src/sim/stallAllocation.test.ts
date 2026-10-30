@@ -84,9 +84,9 @@ test("assignHorseToStall updates stall to OCCUPIED and sets horseId and horseNam
 
 test("assignHorseToStall relocates horse if it was already in another stall", () => {
   const stalls = initStalls();
-  const originalStall = stalls.find((s) => s.status === "OCCUPIED" && s.horseName === "Thunderbolt Swift")!;
+  const originalStall = stalls.find((s) => s.status === "OCCUPIED" && s.horseName === "Bạch Long Mã")!;
   const newStall = stalls.find((s) => s.zoneCode === "ZONE-B" && s.status === "AVAILABLE")!;
-  const horse = seedHorses()[0]; // Thunderbolt Swift
+  const horse = seedHorses()[0]; // Bạch Long Mã
 
   const updated = assignHorseToStall(stalls, newStall.code, horse);
   const oldStallAfter = updated.find((s) => s.code === originalStall.code)!;

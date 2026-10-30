@@ -35,11 +35,11 @@ type Seed = [string, Coat, HorseProfile["gender"], number, number, Lifecycle, St
 
 // [tên, màu lông, giới tính, tuổi, cân nặng, vòng đời, sức khỏe chuồng, medical lock, chiến thuật]
 const SEEDS: Seed[] = [
-  ["Thunderbolt Swift", "BAY", "STALLION", 4, 485, "SAN_SANG_THI_DAU", "FIT", false, "STALKER"],
+  ["Bạch Long Mã", "BAY", "STALLION", 4, 485, "SAN_SANG_THI_DAU", "FIT", false, "STALKER"],
   ["Crimson Comet", "CHESTNUT", "MARE", 5, 462, "DANG_TAP_LUYEN", "FIT", false, "FRONT"],
   ["Midnight Echo", "BLACK", "GELDING", 6, 501, "SAN_SANG_THI_DAU", "FIT", false, "CLOSER"],
   ["Silver Mistral", "GRAY", "MARE", 4, 455, "CAN_THEO_DOI", "WATCH", false, "STALKER"],
-  ["Shadowfax Wonder", "ROAN", "STALLION", 7, 512, "CHAN_THUONG", "INJURED", true, "CLOSER"],
+  ["Xích Thố", "ROAN", "STALLION", 7, 512, "CHAN_THUONG", "INJURED", true, "CLOSER"],
   ["Golden Meridian", "CHESTNUT", "GELDING", 5, 478, "DANG_TAP_LUYEN", "FIT", false, "FRONT"],
   ["Night Sonata", "BLACK", "MARE", 3, 449, "SAN_SANG_THI_DAU", "FIT", false, "STALKER"],
   ["Saigon Spirit", "BAY", "STALLION", 5, 495, "SAN_SANG_THI_DAU", "FIT", false, "CLOSER"],
