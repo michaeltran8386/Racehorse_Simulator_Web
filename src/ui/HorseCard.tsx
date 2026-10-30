@@ -17,7 +17,7 @@ interface Props {
   horse: HorseProfile;
   sprites: Sprites;
   reported: boolean;
-  onToggleLock: (id: string) => void;
+  onToggleLock?: (id: string) => void;
   onClose: () => void;
 }
 
@@ -26,7 +26,7 @@ interface IncidentPayload {
   incident?: { label?: string; location?: string };
 }
 
-export function HorseCard({ horse: h, sprites, reported, onToggleLock, onClose }: Props) {
+export function HorseCard({ horse: h, sprites, reported, onClose }: Props) {
   const incidents = useLog().filter((e) => e.event === "sim:incident_report" && (e.payload as IncidentPayload).horse?.horse_id === h.id);
   const kmh = h.topSpeedMps * 3.6;
   const fitnessPct = Math.round(((h.fitness - 0.85) / 0.3) * 100);
@@ -94,7 +94,7 @@ export function HorseCard({ horse: h, sprites, reported, onToggleLock, onClose }
             </div>
             <div>
               <dt>Cân nặng</dt>
-              <dd>{h.weightKg} kg</dd>
+              <dd>{h.weightKg ? `${h.weightKg} kg` : "Chưa có dữ liệu"}</dd>
             </div>
             <div>
               <dt>Màu lông</dt>
@@ -103,8 +103,7 @@ export function HorseCard({ horse: h, sprites, reported, onToggleLock, onClose }
             <div>
               <dt>Ô chuồng</dt>
               <dd>
-                {String.fromCharCode(65 + h.stall.row)}
-                {h.stall.col + 1}
+                {(h as any).stallCode || `${String.fromCharCode(65 + h.stall.row)}${h.stall.col + 1}`}
               </dd>
             </div>
             <div>
@@ -117,7 +116,7 @@ export function HorseCard({ horse: h, sprites, reported, onToggleLock, onClose }
             </div>
             <div className={c.wide}>
               <dt>Mã chip</dt>
-              <dd>{formatMicrochip(h.microchip)}</dd>
+              <dd>{h.microchip ? (h.microchip.includes('*') ? h.microchip : formatMicrochip(h.microchip)) : 'Chưa gắn chip'}</dd>
             </div>
           </dl>
         </div>
@@ -149,17 +148,9 @@ export function HorseCard({ horse: h, sprites, reported, onToggleLock, onClose }
         <div>
           <h3 className={c.sectionTitle}>{h.medicalLock ? "Đang khóa y tế" : "Không khóa y tế"}</h3>
           <p className={s.hint}>
-            Khóa y tế chính thức do Bác sĩ thú y phê duyệt trên Main Web. Nút dưới đây chỉ dùng để giả lập thử nghiệm cục bộ.
+            Khóa y tế được đồng bộ tự động theo thời gian thực từ Bác sĩ thú y trên Main Web.
           </p>
         </div>
-        <button
-          type="button"
-          className={`${h.medicalLock ? `${s.btn} ${s.primary}` : `${s.btn} ${s.danger}`} ${s.puffy}`}
-          onClick={() => onToggleLock(h.id)}
-          title="Giả lập khóa cục bộ (chỉ áp dụng trên Simulator, không gửi lệnh khóa thật tới Backend)"
-        >
-          {h.medicalLock ? "Giả lập gỡ khóa" : "Giả lập khóa"}
-        </button>
       </section>
     </Popup>
   );

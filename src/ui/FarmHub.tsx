@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useCountUp } from "./useCountUp";
 import { FARM_INTERACTIVE_OBJECTS, type FarmTarget } from "../hub/farmLayout";
 import { assignPaddockHorses, assignStableHorses } from "../hub/farmPopulation";
-import { stockLevel, SUPPLY_IDS, type Inventory, type SupplyId } from "../sim/inventory";
+import { stockLevel, type Inventory, type SupplyId } from "../sim/inventory";
 import { SupplyPanel } from "./SupplyPanel";
 import { StallTab } from "./StallTab";
 import { initStalls } from "../sim/stallAllocation";
@@ -16,6 +16,8 @@ import { FarmMapCanvas, type TimeOfDay } from "./FarmMapCanvas";
 import { HorseCard } from "./HorseCard";
 import { HorseList } from "./HorseList";
 import { Popup } from "./Popup";
+import { useAudioSettings } from "../audio/audioManager";
+import { AudioControl } from "./AudioControl";
 
 interface Props {
   sprites: Sprites;
@@ -28,13 +30,17 @@ interface Props {
   onEnterTrack: () => void;
   onSelect: (id: string) => void;
   onToggleLock: (id: string) => void;
-  onRandom: () => void;
+  onRandom?: () => void;
   onIncident: (horseId: string) => void;
   arriveFrom: FarmTarget | null;
   inventory: Inventory;
   onOrder: (item: SupplyId) => void;
+  onRefreshInventory?: () => Promise<void> | void;
   /** Chuyến xe giao hàng (đồng hồ performance.now, giây). */
   trip: { arriveAt: number; items: SupplyId[] } | null;
+  initialVetOpen?: boolean;
+  sessionId?: string | null;
+  targetHorseId?: string | null;
 }
 
 const nowTod = (): TimeOfDay => {
@@ -47,7 +53,8 @@ const nowTod = (): TimeOfDay => {
 };
 const clock = () => new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 
-export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onEnterTrack, onSelect, onToggleLock, onRandom, onIncident, arriveFrom, inventory, onOrder, trip }: Props) {
+export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onEnterTrack, onSelect, onToggleLock, onRandom, onIncident, arriveFrom, inventory, onOrder, onRefreshInventory, trip, initialVetOpen, sessionId, targetHorseId }: Props) {
+  const { playSfx } = useAudioSettings();
   const [tod, setTod] = useState<TimeOfDay>(nowTod);
   const [time, setTime] = useState(clock);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -59,7 +66,7 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
   const [stalls, setStalls] = useState<MockStall[]>(() => initStalls());
   const [stallOpen, setStallOpen] = useState(false);
   const [stallSel, setStallSel] = useState<string | null>(null);
-  const [vetOpen, setVetOpen] = useState(false);
+  const [vetOpen, setVetOpen] = useState(Boolean(initialVetOpen));
   const [groomOpen, setGroomOpen] = useState(false);
   const card = horses.find((h) => h.id === cardId) ?? null;
   // Ngựa bãi thả và ngựa chuồng được phân bổ ổn định danh tính
@@ -68,7 +75,16 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
   const stableHorses = useMemo(() => assignStableHorses(horses, paddockIds), [horses, paddockIds]);
 
   const locked = horses.filter((h) => h.medicalLock).length;
-  const lowSupplies = SUPPLY_IDS.filter((id) => stockLevel(inventory, id) !== "OK").length;
+  const lowSupplies =
+    inventory.stocks.length > 0
+      ? inventory.stocks.filter((s) => stockLevel(s) !== "OK").length
+      : 0;
+
+  useEffect(() => {
+    if (initialVetOpen) {
+      setVetOpen(true);
+    }
+  }, [initialVetOpen]);
 
   useEffect(() => {
     const tick = window.setInterval(() => setTime(clock()), 15_000);
@@ -99,7 +115,10 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
           else if (target === "STALL") setStallOpen(true);
           else if (target === "VET") setVetOpen(true);
           else if (target === "GROOM") setGroomOpen(true);
-          else setSupplyOpen(true);
+          else {
+            onRefreshInventory?.();
+            setSupplyOpen(true);
+          }
         }}
         paddock={paddock}
         stableHorses={stableHorses}
@@ -107,10 +126,17 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
         arriveFrom={arriveFrom}
         trip={trip}
         simulationRunning={speed > 0}
-        hasHay={inventory.stock.HAY > 0}
+        hasHay={Boolean(
+          (inventory.stock.HAY ?? 0) > 0 ||
+            inventory.stocks.some(
+              (s) =>
+                (s.category === 'FORAGE' || s.supplyCode.includes('HAY')) &&
+                s.quantity > 0,
+            ),
+        )}
       />
 
-      {/* Trên-trái: đồng hồ + ngày/đêm */}
+      {/* Trên-trái: đồng hồ + ngày/đêm + âm thanh */}
       <div className={`${c.hud} ${c.topLeft}`}>
         <div className={c.pill}>
           <span className={c.pillLabel}>EquiFlow</span>
@@ -121,10 +147,14 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
           className={c.round}
           data-tone={tod === "DAY" ? "sun" : "moon"}
           aria-label={tod === "DAY" ? "Đang ban ngày, chuyển sang ban đêm" : "Đang ban đêm, chuyển sang ban ngày"}
-          onClick={() => setTod((t) => (t === "DAY" ? "NIGHT" : "DAY"))}
+          onClick={() => {
+            playSfx("ui-click");
+            setTod((t) => (t === "DAY" ? "NIGHT" : "DAY"));
+          }}
         >
           <span aria-hidden>{tod === "DAY" ? "☀" : "☾"}</span>
         </button>
+        <AudioControl align="left" />
       </div>
 
       {/* Trên-phải: bộ đếm */}
@@ -154,19 +184,44 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
 
       {/* Dưới-phải: nút tròn lớn */}
       <div className={`${c.hud} ${c.bottomRight}`}>
-        <button type="button" className={c.bigRound} onClick={() => setListOpen(true)}>
+        <button
+          type="button"
+          className={c.bigRound}
+          onClick={() => {
+            playSfx("ui-click");
+            setListOpen(true);
+          }}
+        >
           <span className={c.bigIcon} aria-hidden>
             ♞
           </span>
           <span className={c.bigLabel}>Ngựa</span>
         </button>
-        <button type="button" className={c.bigRound} data-tone="supply" onClick={() => setSupplyOpen(true)}>
+        <button
+          type="button"
+          className={c.bigRound}
+          data-tone="supply"
+          data-testid="hub-supply-btn"
+          onClick={() => {
+            playSfx("building-open");
+            onRefreshInventory?.();
+            setSupplyOpen(true);
+          }}
+        >
           <span className={c.bigIcon} aria-hidden>
             ▣
           </span>
           <span className={c.bigLabel}>Kho</span>
         </button>
-        <button type="button" className={c.bigRound} onClick={() => setGroomOpen(true)} title="Nhân viên">
+        <button
+          type="button"
+          className={c.bigRound}
+          onClick={() => {
+            playSfx("building-open");
+            setGroomOpen(true);
+          }}
+          title="Nhân viên"
+        >
           <span className={c.bigIcon} aria-hidden>
             👥
           </span>
@@ -177,7 +232,10 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
           className={c.bigRound}
           data-tone={speed === 0 ? "pause" : undefined}
           aria-label={`Tốc độ mô phỏng ${speed === 0 ? "tạm dừng" : `${speed} lần`}, bấm để đổi sang ${nextSpeed === 0 ? "tạm dừng" : `${nextSpeed} lần`}`}
-          onClick={() => onSpeed(nextSpeed)}
+          onClick={() => {
+            playSfx("ui-click");
+            onSpeed(nextSpeed);
+          }}
         >
           <span className={c.bigIcon} aria-hidden>
             {speed === 0 ? "II" : `${speed}×`}
@@ -186,7 +244,14 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
         </button>
       </div>
 
-      {supplyOpen && <SupplyPanel inventory={inventory} onOrder={onOrder} onClose={() => setSupplyOpen(false)} />}
+      {supplyOpen && (
+        <SupplyPanel
+          inventory={inventory}
+          onOrder={onOrder}
+          onRefresh={onRefreshInventory}
+          onClose={() => setSupplyOpen(false)}
+        />
+      )}
       {stallOpen && (
         <Popup title="Khu chuồng" onClose={() => setStallOpen(false)}>
           <StallTab
@@ -204,7 +269,7 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
       )}
       {vetOpen && (
         <Popup title="Phòng khám thú y" onClose={() => setVetOpen(false)}>
-          <VetZone horses={horses} sprites={sprites} reported={reported} onToggleLock={onToggleLock} onOpenCard={openCard} />
+          <VetZone horses={horses} sprites={sprites} reported={reported} onToggleLock={onToggleLock} onOpenCard={openCard} sessionId={sessionId} targetHorseId={targetHorseId} />
         </Popup>
       )}
       {groomOpen && (
@@ -213,7 +278,7 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
         </Popup>
       )}
       {listOpen && (
-        <HorseList horses={horses} sprites={sprites} reported={reported} onOpen={openCard} onRandom={onRandom} onClose={() => setListOpen(false)} />
+        <HorseList horses={horses} sprites={sprites} reported={reported} onOpen={openCard} onRandom={onRandom || (() => {})} onClose={() => setListOpen(false)} />
       )}
       {card && (
         <HorseCard horse={card} sprites={sprites} reported={reported.has(card.id)} onToggleLock={onToggleLock} onClose={() => setCardId(null)} />

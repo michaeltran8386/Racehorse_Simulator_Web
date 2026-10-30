@@ -85,7 +85,7 @@ const MUD_DRAIN = 1.5;
 const JUMP_HALF_M = 3;
 
 const WALK_MPS = 1.7;
-const COOLDOWN_S = 300; // 5 phút đi bộ hồi phục → đo heartRateRecovery
+export const COOLDOWN_S = 600; // 10 phút đi bộ hồi phục theo form kết quả chính thức
 const REST_TEMP_C = 37.8;
 
 export interface RunState {
@@ -109,6 +109,7 @@ export interface RunState {
   peakHr: number;
   topV: number;
   finishTime: number | null;
+  hrRecovery10m: number | null;
   hrRecovery5m: number | null;
   sums: { hr: number; stride: number; freq: number; n: number };
   rng: number;
@@ -137,6 +138,7 @@ export interface RunSummary {
   avgStrideFreqHz: number;
   kcal: number;
   finalTempC: number;
+  hrRecovery10m: number | null;
   hrRecovery5m: number | null;
   incident: Incident | null;
   condition: TrackCondition;
@@ -178,6 +180,7 @@ export function createRun(horse: HorseProfile, cfg: RunConfig, seed: number): Ru
     peakHr: 0,
     topV: 0,
     finishTime: null,
+    hrRecovery10m: null,
     hrRecovery5m: null,
     sums: { hr: 0, stride: 0, freq: 0, n: 0 },
     rng: seed | 0,
@@ -305,9 +308,15 @@ export function stepRun(run: RunState, horse: HorseProfile, dt: number, paceOver
   if (run.status === "RUNNING" && run.distance >= run.targetM) {
     run.finishTime = run.t - (run.distance - run.targetM) / Math.max(run.v, 0.1); // nội suy lúc qua vạch
     run.status = "COOLDOWN";
-  } else if (run.status === "COOLDOWN" && run.finishTime !== null && run.t - run.finishTime >= COOLDOWN_S) {
-    run.hrRecovery5m = Math.round(run.hr);
-    run.status = "FINISHED";
+  } else if (run.status === "COOLDOWN" && run.finishTime !== null) {
+    const elapsedCooldown = run.t - run.finishTime;
+    if (run.hrRecovery5m === null && elapsedCooldown >= 300) {
+      run.hrRecovery5m = Math.round(run.hr);
+    }
+    if (run.hrRecovery10m === null && elapsedCooldown >= COOLDOWN_S) {
+      run.hrRecovery10m = Math.round(run.hr);
+      run.status = "FINISHED";
+    }
   }
 }
 
@@ -354,6 +363,7 @@ export function summarize(run: RunState): RunSummary {
     avgStrideFreqHz: Math.round((run.sums.freq / n) * 100) / 100,
     kcal: r1(run.kcal),
     finalTempC: r1(run.tempC),
+    hrRecovery10m: run.hrRecovery10m,
     hrRecovery5m: run.hrRecovery5m,
     incident: run.incident,
     condition: run.condition,
@@ -431,3 +441,112 @@ export function standings(race: Race): RaceEntry[] {
 }
 
 export const HORSE_LENGTH_M = 2.4;
+
+// ------------------------------------------------------------------ Simulation 1.0 Hz Ticker (CONSTRAINTS §2)
+
+export const TICK_RATE_HZ = 1.0;
+export const TICK_INTERVAL_S = 1.0;
+export const TICK_TOLERANCE_PCT = 0.05; // ±5% tolerance
+export const MIN_TICK_RATE_HZ = TICK_RATE_HZ * (1 - TICK_TOLERANCE_PCT); // 0.95 Hz
+export const MAX_TICK_RATE_HZ = TICK_RATE_HZ * (1 + TICK_TOLERANCE_PCT); // 1.05 Hz
+
+export interface SimulationTicker {
+  readonly tickAcc: number;
+  readonly ticksEmitted: number;
+  readonly totalSimTime: number;
+  step(dt: number, onTick?: (simTime: number, tickIndex: number) => void): number;
+  reset(): void;
+  getEffectiveHz(): number;
+}
+
+export function createSimulationTicker(targetHz = TICK_RATE_HZ): SimulationTicker {
+  let tickAcc = 0;
+  let ticksEmitted = 0;
+  let totalSimTime = 0;
+  const interval = 1.0 / targetHz;
+
+  return {
+    get tickAcc() {
+      return tickAcc;
+    },
+    get ticksEmitted() {
+      return ticksEmitted;
+    },
+    get totalSimTime() {
+      return totalSimTime;
+    },
+    step(dt: number, onTick?: (simTime: number, tickIndex: number) => void): number {
+      totalSimTime += dt;
+      tickAcc += dt;
+      let count = 0;
+      while (tickAcc >= interval) {
+        tickAcc -= interval;
+        ticksEmitted++;
+        count++;
+        if (onTick) {
+          onTick(totalSimTime - tickAcc, ticksEmitted);
+        }
+      }
+      return count;
+    },
+    reset() {
+      tickAcc = 0;
+      ticksEmitted = 0;
+      totalSimTime = 0;
+    },
+    getEffectiveHz(): number {
+      return totalSimTime > 0 ? ticksEmitted / totalSimTime : 0;
+    },
+  };
+}
+
+export interface SimulationRunResult {
+  ticks: number;
+  durationS: number;
+  effectiveHz: number;
+  inTolerance: boolean;
+  run: RunState;
+  summary: RunSummary;
+}
+
+export function runSimulationWithTicker(
+  horse: HorseProfile,
+  cfg: RunConfig,
+  seed = 1,
+  substepS = 0.05,
+  targetDurationS?: number,
+  onTick?: (run: RunState, simTime: number, tickIndex: number) => void,
+): SimulationRunResult {
+  const run = createRun(horse, cfg, seed);
+  const ticker = createSimulationTicker(TICK_RATE_HZ);
+  const maxT = targetDurationS ?? 2000;
+
+  let abortedAtT: number | null = null;
+  while (run.status !== "FINISHED" && run.t < maxT) {
+    stepRun(run, horse, substepS);
+    ticker.step(substepS, (simTime, tickIndex) => {
+      if (onTick) onTick(run, simTime, tickIndex);
+    });
+
+    if (run.status === "ABORTED_INJURY") {
+      if (abortedAtT === null) {
+        abortedAtT = run.t;
+      }
+      if (run.v <= 0.05 || (run.t - abortedAtT) >= 15.0) {
+        break;
+      }
+    }
+  }
+
+  const effectiveHz = ticker.getEffectiveHz();
+  const inTolerance = effectiveHz >= MIN_TICK_RATE_HZ && effectiveHz <= MAX_TICK_RATE_HZ;
+
+  return {
+    ticks: ticker.ticksEmitted,
+    durationS: ticker.totalSimTime,
+    effectiveHz,
+    inTolerance,
+    run,
+    summary: summarize(run),
+  };
+}

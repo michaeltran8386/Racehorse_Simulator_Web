@@ -1,8 +1,11 @@
 // Phòng khám (bảng nổi trên bản đồ): cảnh báo sự cố + ngựa xếp theo mức khẩn, chạm để mở thẻ ngựa.
 // Khám, chẩn đoán, kê đơn làm trên Main Web (M5 đã bị loại khỏi Simulator theo kết quả duyệt).
+import { useState } from "react";
 import { useLog } from "../sim/bus";
 import type { HorseProfile } from "../sim/engine";
 import { HEALTH_LABEL } from "../sim/horses";
+import { examFinishedPacket } from "../sim/packets";
+import { emitExamFinished } from "../sim/socketTransport";
 import { drawFrame, type Sprites } from "../render/sprites";
 import { PixelCanvas } from "./PixelCanvas";
 import c from "./VetZone.module.css";
@@ -12,8 +15,10 @@ interface Props {
   horses: HorseProfile[];
   sprites: Sprites;
   reported: Set<string>;
-  onToggleLock: (id: string) => void;
+  onToggleLock?: (id: string) => void;
   onOpenCard: (id: string) => void;
+  sessionId?: string | null;
+  targetHorseId?: string | null;
 }
 
 interface IncidentPayload {
@@ -35,13 +40,107 @@ function urgency(h: HorseProfile, reported: Set<string>): number {
   return h.health === "WATCH" ? 3 : 4;
 }
 
-export function VetZone({ horses, sprites, reported, onToggleLock, onOpenCard }: Props) {
+export function VetZone({ horses, sprites, reported, onOpenCard, sessionId, targetHorseId }: Props) {
   const ranked = horses.map((h) => ({ h, u: urgency(h, reported) })).sort((a, b) => a.u - b.u);
   const incidents = useLog().filter((e) => e.event === "sim:incident_report");
   const byId = new Map(horses.map((h) => [h.id, h]));
+  const targetHorse = horses.find((h) => h.id === targetHorseId) || horses[0];
+
+  const [submittingExam, setSubmittingExam] = useState(false);
+  const [examStatus, setExamStatus] = useState<"IDLE" | "COMPLETED">("IDLE");
+  const [examError, setExamError] = useState<string | null>(null);
+
+  const handleCompleteExam = async () => {
+    if (!sessionId || !targetHorse || submittingExam || examStatus === "COMPLETED") return;
+    setSubmittingExam(true);
+    setExamError(null);
+    try {
+      const packet = examFinishedPacket(sessionId, targetHorse);
+      await emitExamFinished(packet);
+      setExamStatus("COMPLETED");
+    } catch (err: any) {
+      setExamError(err.message || "Không thể gửi kết quả khám lên máy chủ.");
+    } finally {
+      setSubmittingExam(false);
+    }
+  };
 
   return (
     <div className={c.stack}>
+      {sessionId && targetHorse && (
+        <section className={s.card} data-testid="vet-exam-panel">
+          <div className={s.cardHead}>
+            <h3 className={s.cardTitle}>Phiên khám lâm sàng · {targetHorse.name}</h3>
+            <span className={examStatus === "COMPLETED" ? s.FIT : s.badge}>
+              {examStatus === "COMPLETED" ? "Đã hoàn thành" : "Đang khám"}
+            </span>
+          </div>
+          <div className={s.cardBody}>
+            <p className={s.hint}>
+              Thu thập dữ liệu đo sinh trắc học thời gian thực và đồng bộ về Bệnh án điện tử trên Main Web.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.75rem", margin: "1rem 0" }}>
+              <div style={{ background: "var(--parchment-2)", padding: "0.5rem 0.75rem", borderRadius: "4px" }}>
+                <span style={{ fontSize: "12px", color: "var(--ink-muted)", display: "block" }}>Thân nhiệt</span>
+                <strong style={{ fontSize: "16px" }}>{(37.7 + (1 - targetHorse.fitness) * 2).toFixed(1)} °C</strong>
+              </div>
+              <div style={{ background: "var(--parchment-2)", padding: "0.5rem 0.75rem", borderRadius: "4px" }}>
+                <span style={{ fontSize: "12px", color: "var(--ink-muted)", display: "block" }}>Nhịp tim tĩnh</span>
+                <strong style={{ fontSize: "16px" }}>{Math.round(targetHorse.hrRest)} BPM</strong>
+              </div>
+              <div style={{ background: "var(--parchment-2)", padding: "0.5rem 0.75rem", borderRadius: "4px" }}>
+                <span style={{ fontSize: "12px", color: "var(--ink-muted)", display: "block" }}>Nhịp thở</span>
+                <strong style={{ fontSize: "16px" }}>{Math.round(10 + (1 - targetHorse.fitness) * 12)} lần/phút</strong>
+              </div>
+              <div style={{ background: "var(--parchment-2)", padding: "0.5rem 0.75rem", borderRadius: "4px" }}>
+                <span style={{ fontSize: "12px", color: "var(--ink-muted)", display: "block" }}>Cân nặng</span>
+                <strong style={{ fontSize: "16px" }}>{targetHorse.weightKg ? `${targetHorse.weightKg} kg` : "Chưa có dữ liệu"}</strong>
+              </div>
+            </div>
+
+            {examError && (
+              <div className={s.noticeDanger} role="alert" style={{ marginBottom: "0.75rem" }}>
+                ⚠️ {examError}
+              </div>
+            )}
+
+            {examStatus === "COMPLETED" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <div className={s.noticeOk} data-testid="exam-completed-alert" style={{ padding: "0.5rem 0.75rem" }}>
+                  ✅ Đã ghi nhận kết quả khám thành công vào PostgreSQL. Hãy quay lại Main Web để tải kết quả.
+                </div>
+                <button
+                  type="button"
+                  id="btn-close-exam"
+                  data-testid="close-exam-btn"
+                  className={`${s.btn} ${s.puffy}`}
+                  onClick={() => {
+                    if (window.opener && !window.opener.closed) {
+                      window.opener.focus();
+                    }
+                    window.close();
+                  }}
+                  style={{ width: "100%", justifyContent: "center", fontWeight: 600 }}
+                >
+                  ◀ Quay lại Main Web & Đóng tab
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                id="btn-complete-exam"
+                data-testid="complete-exam-btn"
+                className={`${s.btn} ${s.puffy}`}
+                disabled={submittingExam}
+                onClick={handleCompleteExam}
+                style={{ width: "100%", justifyContent: "center", fontWeight: 600 }}
+              >
+                {submittingExam ? "Đang gửi dữ liệu đo…" : "Hoàn tất khám & Lưu kết quả"}
+              </button>
+            )}
+          </div>
+        </section>
+      )}
       <section className={s.card}>
         <div className={c.banner}>
           <PixelCanvas
@@ -101,9 +200,9 @@ export function VetZone({ horses, sprites, reported, onToggleLock, onOpenCard }:
                       </div>
                     </div>
                     {h && (
-                      <button type="button" className={h.medicalLock ? `${s.btn} ${s.small}` : `${s.danger} ${s.small}`} onClick={() => onToggleLock(h.id)}>
-                        {h.medicalLock ? "Gỡ khóa" : "Khóa"}
-                      </button>
+                      <span className={h.medicalLock ? s.lock : s.badge}>
+                        {h.medicalLock ? "Đang khóa y tế" : "Bình thường"}
+                      </span>
                     )}
                   </li>
                 );

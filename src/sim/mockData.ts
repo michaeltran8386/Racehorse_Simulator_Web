@@ -249,10 +249,10 @@ export const MOCK_USERS: readonly MockUser[] = [
 
 export const MOCK_STALLS: readonly MockStall[] = [
   // ZONE A: 2 hàng × 4 cột = 8 ô chuồng
-  { id: "stl-a01", code: "A-01", zoneCode: "ZONE-A", row: 0, col: 0, status: "OCCUPIED", horseId: "h-01", horseName: "Thunderbolt Swift", assignedGroomName: "John Smith", notes: "Ngựa phong độ cao, chuẩn bị xuất trận" },
-  { id: "stl-a02", code: "A-02", zoneCode: "ZONE-A", row: 0, col: 1, status: "OCCUPIED", horseId: "h-02", horseName: "Northern Dancer", assignedGroomName: "John Smith", notes: "Chấn thương cổ chân nhẹ - có khóa y tế" },
-  { id: "stl-a03", code: "A-03", zoneCode: "ZONE-A", row: 0, col: 2, status: "OCCUPIED", horseId: "h-04", horseName: "Pegasus Dream", assignedGroomName: "John Smith", notes: "Thể lực tốt, nhịp tim nghỉ 42 bpm" },
-  { id: "stl-a04", code: "A-04", zoneCode: "ZONE-A", row: 0, col: 3, status: "OCCUPIED", horseId: "h-05", horseName: "Golden Eclipse", assignedGroomName: "Lê Văn Phúc", notes: "Đang rèn luyện nước đại" },
+  { id: "stl-a01", code: "A-01", zoneCode: "ZONE-A", row: 0, col: 0, status: "OCCUPIED", horseId: "h-01", horseName: "Bạch Long Mã", assignedGroomName: "Lê Văn Bình", notes: "Ngựa phong độ cao, chuẩn bị xuất trận" },
+  { id: "stl-a02", code: "A-02", zoneCode: "ZONE-A", row: 0, col: 1, status: "OCCUPIED", horseId: "h-02", horseName: "Xích Thố", assignedGroomName: "Lê Văn Bình", notes: "Chấn thương gân cổ chân - có khóa y tế" },
+  { id: "stl-a03", code: "A-03", zoneCode: "ZONE-A", row: 0, col: 2, status: "OCCUPIED", horseId: "h-04", horseName: "Hắc Báo", assignedGroomName: "Lê Văn Bình", notes: "Thể lực tốt, nhịp tim nghỉ 42 bpm" },
+  { id: "stl-a04", code: "A-04", zoneCode: "ZONE-A", row: 0, col: 3, status: "OCCUPIED", horseId: "h-05", horseName: "Thần Phong", assignedGroomName: "Hoàng Văn Phúc", notes: "Đang rèn luyện nước đại" },
   { id: "stl-a05", code: "A-05", zoneCode: "ZONE-A", row: 1, col: 0, status: "AVAILABLE", notes: "Ô chuồng sẵn sàng đón cá thể mới, rơm sạch" },
   { id: "stl-a06", code: "A-06", zoneCode: "ZONE-A", row: 1, col: 1, status: "AVAILABLE", notes: "Ô chuồng sẵn sàng đón cá thể mới, rơm sạch" },
   { id: "stl-a07", code: "A-07", zoneCode: "ZONE-A", row: 1, col: 2, status: "AVAILABLE", notes: "Ô chuồng sẵn sàng đón cá thể mới, rơm sạch" },

@@ -1,6 +1,7 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import styles from "./IntroOverlay.module.css";
 import { cloudField, INTRO, INTRO_REDUCED_TOTAL_MS, INTRO_TITLE, INTRO_TOTAL_MS, titleLetters, type CloudLayer } from "./introTimeline";
+import { audio } from "../audio/audioManager";
 
 const LAYERS: readonly CloudLayer[] = ["back", "mid", "front"];
 const FIELDS = Object.fromEntries(LAYERS.map((layer) => [layer, cloudField(layer)])) as Record<CloudLayer, ReturnType<typeof cloudField>>;
@@ -26,12 +27,47 @@ const TIMING = {
  */
 export function IntroGate({ children }: { children: ReactNode }) {
   const [done, setDone] = useState(false);
+  const audioStarted = useRef(false);
+
+  useEffect(() => {
+    audio.init();
+    audio.duckMusic(true);
+
+    if (done) {
+      audio.duckMusic(false);
+      audio.startMusic();
+      return;
+    }
+
+    if (!audioStarted.current) {
+      audioStarted.current = true;
+      // Pha 1: TMEC logo reveal chime
+      const tLogo = window.setTimeout(() => {
+        audio.playSfx("intro-logo-reveal");
+      }, INTRO.acronymPop.start);
+
+      // Pha 3: Cloud separation whoosh
+      const tWhoosh = window.setTimeout(() => {
+        audio.playSfx("intro-cloud-whoosh");
+      }, INTRO.part.start);
+
+      return () => {
+        clearTimeout(tLogo);
+        clearTimeout(tWhoosh);
+      };
+    }
+  }, [done]);
 
   useEffect(() => {
     if (done) return;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = window.setTimeout(() => setDone(true), reduced ? INTRO_REDUCED_TOTAL_MS : INTRO_TOTAL_MS);
-    const skip = () => setDone(true);
+    const finish = () => {
+      audio.duckMusic(false);
+      audio.startMusic();
+      setDone(true);
+    };
+    const timer = window.setTimeout(finish, reduced ? INTRO_REDUCED_TOTAL_MS : INTRO_TOTAL_MS);
+    const skip = () => finish();
     window.addEventListener("keydown", skip);
     return () => {
       clearTimeout(timer);
@@ -45,7 +81,15 @@ export function IntroGate({ children }: { children: ReactNode }) {
         {children}
       </div>
       {!done && (
-        <div className={styles.overlay} style={TIMING} onPointerDown={() => setDone(true)}>
+        <div
+          className={styles.overlay}
+          style={TIMING}
+          onPointerDown={() => {
+            audio.duckMusic(false);
+            audio.startMusic();
+            setDone(true);
+          }}
+        >
           {LAYERS.map((layer) =>
             (["left", "right"] as const).map((side) => (
               <div key={`${layer}-${side}`} className={`${styles.half} ${styles[side]} ${styles[layer]}`} aria-hidden="true">

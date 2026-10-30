@@ -1,8 +1,10 @@
 // Chạy thử 1 ngựa trên 3 mặt sân (SIM-03, SIM-04) + sự cố trên đường chạy (SIM-06) + chặn theo Medical Lock (SIM-07).
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { publish } from "../sim/bus";
 import {
   createRun,
+  createSimulationTicker,
+  formatMicrochip,
   INTENSITY_PACE,
   jumpLift,
   stepRun,
@@ -13,6 +15,7 @@ import {
   type Obstacle,
   type RunState,
   type RunSummary,
+  type SimulationTicker,
   type Surface,
   type TrackCondition,
 } from "../sim/engine";
@@ -38,24 +41,33 @@ interface Props {
   sprites: Sprites;
   speed: number;
   onIncident: (horseId: string) => void;
+  sessionId?: string;
+  initialWorkout?: {
+    surface?: Surface;
+    distance?: number;
+    intensity?: Intensity;
+    condition?: TrackCondition;
+    obstacles?: Obstacle[];
+  };
 }
 
-export function TrialTab({ horse, sprites, speed, onIncident }: Props) {
-  const [surface, setSurface] = useState<Surface>("GRASS");
-  const [distance, setDistance] = useState(1000);
-  const [intensity, setIntensity] = useState<Intensity>("MODERATE");
-  const [condition, setCondition] = useState<TrackCondition>("GOOD");
-  const [obstacles, setObstacles] = useState<Obstacle[]>([]);
+export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initialWorkout }: Props) {
+  const [surface, setSurface] = useState<Surface>(initialWorkout?.surface || "GRASS");
+  const [distance, setDistance] = useState(initialWorkout?.distance || 1000);
+  const [intensity, setIntensity] = useState<Intensity>(initialWorkout?.intensity || "MODERATE");
+  const [condition, setCondition] = useState<TrackCondition>(initialWorkout?.condition || "GOOD");
+  const [obstacles, setObstacles] = useState<Obstacle[]>(initialWorkout?.obstacles || []);
   const [phase, setPhase] = useState<Phase>("IDLE");
   const [hud, setHud] = useState<HudSnapshot | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
 
   const runRef = useRef<RunState | null>(null);
-  const sessionRef = useRef("");
+  const sessionRef = useRef(sessionId?.trim() || "");
   const horseRef = useRef(horse);
   horseRef.current = horse;
   const series = useRef<ChartPoint[]>([]);
-  const anim = useRef({ phase: 0, tickAcc: 0, hudAcc: 0, finishedSent: false, realT: 0 });
+  const tickerRef = useRef<SimulationTicker>(createSimulationTicker(1.0));
+  const anim = useRef({ phase: 0, hudAcc: 0, finishedSent: false, realT: 0, nextChartT: 1 });
 
   // Đổi ngựa khi đang chạy → hủy phiên hiện tại để không lẫn dữ liệu.
   const runningHorseId = useRef<string | null>(null);
@@ -63,16 +75,38 @@ export function TrialTab({ horse, sprites, speed, onIncident }: Props) {
     runningHorseId.current = null;
     runRef.current = null;
     series.current = [];
+    tickerRef.current.reset();
   }
 
   const blocked = blockReason(horse);
   const heavyBlocked = blocked !== null && intensity !== "LIGHT";
   const busy = phase === "RUNNING" || phase === "COOLDOWN";
+  const isSessionWorkout = Boolean(sessionId || initialWorkout);
+  const hasAuthoritativeObstacles = Boolean(initialWorkout?.obstacles && initialWorkout.obstacles.length > 0);
+  const showObstacleAuthoring = !isSessionWorkout || hasAuthoritativeObstacles;
+  const distanceOptions = DISTANCES.includes(distance)
+    ? DISTANCES
+    : [...DISTANCES, distance].sort((a, b) => a - b);
+
+  // Khi khóa y tế được đồng bộ tới (R-5):
+  // Lập tức vô hiệu hóa bài tập nặng và chuyển về Nhẹ.
+  // Nếu bài Vừa/Nặng đang chạy dở, lập tức chuyển ngay sang trạng thái an toàn (Nhẹ) để không phát thêm telemetry nặng.
+  // Khi khóa được gỡ (lift), ngựa trở về trạng thái hợp lệ nhưng không tự ý kích hoạt lại bài nặng không an toàn.
+  useEffect(() => {
+    if (blocked !== null) {
+      if (intensity !== "LIGHT") {
+        setIntensity("LIGHT");
+      }
+      if (runRef.current && (runRef.current.pace > INTENSITY_PACE.LIGHT || intensity !== "LIGHT")) {
+        runRef.current.pace = INTENSITY_PACE.LIGHT;
+      }
+    }
+  }, [blocked, intensity]);
 
   function start() {
     const seed = (Date.now() & 0x7fffffff) | 0;
     const cfg = { surface, distanceM: distance, pace: INTENSITY_PACE[intensity], condition, obstacles };
-    sessionRef.current = newSessionId("WRK");
+    sessionRef.current = sessionId?.trim() || sessionRef.current || newSessionId("WRK");
     publish("sim:workout_command", "IN", {
       event: "sim:workout_command",
       session_id: sessionRef.current,
@@ -87,16 +121,26 @@ export function TrialTab({ horse, sprites, speed, onIncident }: Props) {
     });
     runRef.current = createRun(horse, cfg, seed);
     runningHorseId.current = horse.id;
-    series.current = [];
-    anim.current = { phase: 0, tickAcc: 0, hudAcc: 0, finishedSent: false, realT: 0 };
+    series.current = [{ speedKmh: runRef.current.v * 3.6, hr: runRef.current.hr }];
+    tickerRef.current.reset();
+    anim.current = { phase: 0, hudAcc: 0, finishedSent: false, realT: 0, nextChartT: 1 };
     setSummary(null);
     setPhase("RUNNING");
     setHud(snapshotOf(runRef.current));
   }
 
   function stop() {
+    const run = runRef.current;
+    if (run && !anim.current.finishedSent) {
+      run.status = "ABORTED_INJURY";
+      run.v = 0;
+      run.pace = 0;
+      finish(run);
+      return;
+    }
     runRef.current = null;
     runningHorseId.current = null;
+    tickerRef.current.reset();
     setPhase("IDLE");
     setHud(null);
   }
@@ -111,10 +155,14 @@ export function TrialTab({ horse, sprites, speed, onIncident }: Props) {
   }
 
   function finish(run: RunState) {
+    if (anim.current.finishedSent) return;
     anim.current.finishedSent = true;
+    run.v = 0;
+    run.pace = 0;
     publish("sim:session_finished", "OUT", workoutFinishedPacket(sessionRef.current, horseRef.current, run));
     setSummary(summarize(run));
     setPhase(run.status === "ABORTED_INJURY" ? "ABORTED" : "DONE");
+    setHud(snapshotOf(run));
   }
 
   const onFrame = (ctx: CanvasRenderingContext2D, w: number, h: number, dtReal: number) => {
@@ -122,6 +170,10 @@ export function TrialTab({ horse, sprites, speed, onIncident }: Props) {
     const run = runRef.current;
     a.realT += dtReal;
     if (run && !a.finishedSent) {
+      // R-5: Nếu khóa y tế kích hoạt trong lúc đang chạy, hạ pace xuống Nhẹ ngay lập tức
+      if (blocked !== null && run.pace > INTENSITY_PACE.LIGHT) {
+        run.pace = INTENSITY_PACE.LIGHT;
+      }
       let simDt = dtReal * speed;
       while (simDt > 1e-6) {
         const step = Math.min(SUBSTEP, simDt);
@@ -129,17 +181,28 @@ export function TrialTab({ horse, sprites, speed, onIncident }: Props) {
         stepRun(run, horseRef.current, step);
         const cyclesPerSec = run.v < 2.6 ? run.v * 0.55 : run.strideFreqHz;
         a.phase += cyclesPerSec * step;
-        a.tickAcc += step;
-        if (a.tickAcc >= 1) {
-          a.tickAcc -= 1; // 1 gói/giây mô phỏng (CONSTRAINTS: 1.0 Hz ở tốc độ 1×)
-          publish("sim:telemetry_tick", "OUT", tickPacket(sessionRef.current, horseRef.current, run, speed));
+        while (run.t + 1e-9 >= a.nextChartT) {
           series.current = [...series.current, { speedKmh: run.v * 3.6, hr: run.hr }].slice(-CHART_POINTS);
+          a.nextChartT += 1;
         }
+        const reachedTarget = run.distance >= (run.targetM ?? distance);
         const injuredStopped = run.status === "ABORTED_INJURY" && run.v < 0.1;
-        if (run.status === "FINISHED" || injuredStopped) {
+        if (run.status === "FINISHED" || reachedTarget || injuredStopped) {
+          if (reachedTarget && run.status !== "ABORTED_INJURY") {
+            run.status = "FINISHED";
+            run.distance = run.targetM ?? distance;
+            run.v = 0;
+            run.pace = 0;
+          }
           finish(run);
           break;
         }
+      }
+      // R-4: Ticker 1.0 Hz ±5% theo đồng hồ thực (dtReal), độc lập với tốc độ mô phỏng speed (1x, 10x, 60x)
+      if (!a.finishedSent) {
+        tickerRef.current.step(dtReal, () => {
+          publish("sim:telemetry_tick", "OUT", tickPacket(sessionRef.current, horseRef.current, run, speed));
+        });
       }
       a.hudAcc += dtReal;
       if (a.hudAcc > 0.15) {
@@ -186,18 +249,37 @@ export function TrialTab({ horse, sprites, speed, onIncident }: Props) {
     <div className={t.stack}>
       <section className={s.card}>
         <div className={s.cardHead}>
-          <h2 className={s.cardTitle}>
-            Chạy thử · <span className={t.horseName}>{horse.name}</span>
-          </h2>
+          <div>
+            <h2 className={s.cardTitle}>
+              Chạy thử · <span className={t.horseName}>{horse.name}</span>
+            </h2>
+            <div style={{ display: "flex", gap: "12px", alignItems: "center", fontSize: "0.85rem", color: "var(--muted)", marginTop: "4px" }}>
+              <span data-testid="trial-horse-weight">Cân nặng: <strong>{horse.weightKg ? `${horse.weightKg} kg` : "Chưa có dữ liệu"}</strong></span>
+              {(horse as any).stallCode && <span data-testid="trial-horse-stall">Chuồng: <strong>{(horse as any).stallCode}</strong></span>}
+              {horse.microchip && <span data-testid="trial-horse-chip">Chip: <strong>{formatMicrochip(horse.microchip)}</strong></span>}
+            </div>
+          </div>
           <PhasePill phase={phase} cooldownLeft={cooldownLeft} />
         </div>
         <div className={s.cardBody}>
+          {isSessionWorkout && (
+            <div style={{ fontSize: "0.82rem", color: "var(--muted)", margin: "0 0 10px 0" }} data-testid="prescribed-workout-notice">
+              🔒 Cấu hình bài tập chỉ định từ Hệ thống Web (Bất biến: {SURFACE_LABEL[surface]} · {distance}m · {INTENSITY_LABEL[intensity]})
+            </div>
+          )}
           <div className={s.row}>
             <div className={s.field}>
               Mặt sân
               <div className={s.segmented} role="group" aria-label="Mặt sân">
                 {(Object.keys(SURFACE_LABEL) as Surface[]).map((k) => (
-                  <button key={k} type="button" className={s.segment} aria-pressed={surface === k} disabled={busy} onClick={() => setSurface(k)}>
+                  <button
+                    key={k}
+                    type="button"
+                    className={s.segment}
+                    aria-pressed={surface === k}
+                    disabled={busy || isSessionWorkout}
+                    onClick={() => setSurface(k)}
+                  >
                     {SURFACE_LABEL[k]}
                   </button>
                 ))}
@@ -206,8 +288,15 @@ export function TrialTab({ horse, sprites, speed, onIncident }: Props) {
             <div className={s.field}>
               Cự ly
               <div className={s.segmented} role="group" aria-label="Cự ly">
-                {DISTANCES.map((d) => (
-                  <button key={d} type="button" className={s.segment} aria-pressed={distance === d} disabled={busy} onClick={() => setDistance(d)}>
+                {distanceOptions.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={s.segment}
+                    aria-pressed={distance === d}
+                    disabled={busy || isSessionWorkout}
+                    onClick={() => setDistance(d)}
+                  >
                     {d}m
                   </button>
                 ))}
@@ -217,7 +306,14 @@ export function TrialTab({ horse, sprites, speed, onIncident }: Props) {
               Cường độ
               <div className={s.segmented} role="group" aria-label="Cường độ">
                 {(Object.keys(INTENSITY_LABEL) as Intensity[]).map((k) => (
-                  <button key={k} type="button" className={s.segment} aria-pressed={intensity === k} disabled={busy} onClick={() => setIntensity(k)}>
+                  <button
+                    key={k}
+                    type="button"
+                    className={s.segment}
+                    aria-pressed={intensity === k}
+                    disabled={busy || isSessionWorkout || (blocked !== null && k !== "LIGHT")}
+                    onClick={() => setIntensity(k)}
+                  >
                     {INTENSITY_LABEL[k]}
                   </button>
                 ))}
@@ -241,14 +337,16 @@ export function TrialTab({ horse, sprites, speed, onIncident }: Props) {
                 : `${blocked}: đang chạy bài Nhẹ phục hồi — cần bác sĩ thú y giám sát.`}
             </p>
           )}
-          <TrackSetup
-            distance={distance}
-            condition={condition}
-            obstacles={obstacles}
-            disabled={busy}
-            onCondition={setCondition}
-            onObstacles={setObstacles}
-          />
+          {showObstacleAuthoring && (
+            <TrackSetup
+              distance={distance}
+              condition={condition}
+              obstacles={obstacles}
+              disabled={busy || isSessionWorkout}
+              onCondition={setCondition}
+              onObstacles={setObstacles}
+            />
+          )}
         </div>
         <div className={s.sceneFrame}>
           <PixelCanvas aspect={0.34} onFrame={onFrame} label={`Đường chạy thử mặt sân ${SURFACE_LABEL[surface]}`} />
@@ -274,6 +372,13 @@ export function TrialTab({ horse, sprites, speed, onIncident }: Props) {
             <Hud snap={hud} horse={horse} />
           </div>
           <div className={s.cardBody}>
+            <p
+              data-testid="trial-chart-meta"
+              data-sample-count={series.current.length}
+              style={{ margin: "0 0 8px", color: "var(--muted)", fontSize: "0.82rem" }}
+            >
+              Phát lại: {speed === 0 ? "Tạm dừng" : speed + "×"} · Thời gian mô phỏng: {formatTime(hud.t)} · {series.current.length} mẫu theo giây mô phỏng
+            </p>
             <LiveChart series={series} />
           </div>
         </section>
@@ -289,13 +394,13 @@ function PhasePill({ phase, cooldownLeft }: { phase: Phase; cooldownLeft: number
     IDLE: "Chờ lệnh",
     RUNNING: "Đang chạy",
     COOLDOWN: `Đi bộ hồi phục · còn ${cooldownLeft !== null ? formatTime(cooldownLeft) : ""}`,
-    DONE: "Hoàn thành",
+    DONE: "DONE",
     ABORTED: "ABORTED_INJURY",
   };
   const cls = phase === "ABORTED" ? s.INJURED : phase === "DONE" ? s.FIT : phase === "IDLE" ? s.badge : s.WATCH;
   return (
     <div className={t.pillGroup}>
-      <span className={cls}>{text[phase]}</span>
+      <span className={cls} data-testid="trial-phase-pill">{text[phase]}</span>
     </div>
   );
 }
@@ -305,10 +410,10 @@ function ResultCard({ summary: r, aborted }: { summary: RunSummary; aborted: boo
   const recovery =
     rec === null ? null : rec <= 85 ? ["Xuất sắc", s.noticeOk] : rec > 110 ? ["Cảnh báo tim mạch", s.noticeDanger] : ["Bình thường", s.notice];
   return (
-    <section className={s.card}>
+    <section className={s.card} data-testid="workout-summary-card">
       <div className={s.cardHead}>
         <h3 className={s.cardTitle}>Kết quả buổi chạy</h3>
-        <span className={aborted ? s.INJURED : s.FIT}>{aborted ? "Dừng do chấn thương" : "Hoàn thành"}</span>
+        <span className={aborted ? s.INJURED : s.FIT} data-testid="workout-result-status">{aborted ? "Dừng do chấn thương" : "DONE"}</span>
       </div>
       <div className={s.cardBody}>
         <table className={s.table}>
