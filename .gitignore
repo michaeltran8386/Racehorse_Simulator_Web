@@ -49,3 +49,4 @@ NOW*.txt
 music/
 public/audio/theme-main.wav
 .impeccable/
+.vercel
