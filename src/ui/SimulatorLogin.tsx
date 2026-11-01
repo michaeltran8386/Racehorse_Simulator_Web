@@ -36,7 +36,7 @@ export function SimulatorLogin({ onSuccess }: Props) {
     <div className={c.backdrop}>
       <div className={c.card}>
         <div className={c.header}>
-          <h1 className={c.title}>EquiFlow Simulator</h1>
+          <h1 className={c.title}>TMEC Simulator</h1>
           <p className={c.subtitle}>Đăng nhập tài khoản hệ thống để nạp ngựa và kết nối vận hành</p>
         </div>
 

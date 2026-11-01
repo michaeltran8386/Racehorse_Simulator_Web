@@ -267,7 +267,7 @@ export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initial
               🔒 Cấu hình bài tập chỉ định từ Hệ thống Web (Bất biến: {SURFACE_LABEL[surface]} · {distance}m · {INTENSITY_LABEL[intensity]})
             </div>
           )}
-          <div className={s.row}>
+          <div className={s.row} data-control>
             <div className={s.field}>
               Mặt sân
               <div className={s.segmented} role="group" aria-label="Mặt sân">
@@ -338,6 +338,7 @@ export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initial
             </p>
           )}
           {showObstacleAuthoring && (
+            <div data-control>
             <TrackSetup
               distance={distance}
               condition={condition}
@@ -346,12 +347,13 @@ export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initial
               onCondition={setCondition}
               onObstacles={setObstacles}
             />
+            </div>
           )}
         </div>
         <div className={s.sceneFrame}>
           <PixelCanvas aspect={0.34} onFrame={onFrame} label={`Đường chạy thử mặt sân ${SURFACE_LABEL[surface]}`} />
         </div>
-        <div className={`${s.cardBody} ${t.incidentBar}`}>
+        <div className={`${s.cardBody} ${t.incidentBar}`} data-control>
           <span className={s.hint}>Tạo sự cố trên đường chạy (hệ thống báo cho người quản lý và bác sĩ thú y):</span>
           <button type="button" className={s.danger} disabled={phase !== "RUNNING"} onClick={() => incident("FRACTURE")}>
             !! Gãy xương chân cấp tính

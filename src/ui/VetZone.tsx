@@ -129,6 +129,7 @@ export function VetZone({ horses, sprites, reported, onOpenCard, sessionId, targ
               <button
                 type="button"
                 id="btn-complete-exam"
+                data-control
                 data-testid="complete-exam-btn"
                 className={`${s.btn} ${s.puffy}`}
                 disabled={submittingExam}

@@ -74,7 +74,7 @@ export function AudioControl({ align = "right" }: { align?: "left" | "right" } =
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-subtle, #3b4252)", paddingBottom: "6px" }}>
-            <span style={{ fontWeight: 700, letterSpacing: "0.5px" }}>Âm Thanh EquiFlow</span>
+            <span style={{ fontWeight: 700, letterSpacing: "0.5px" }}>Âm Thanh TMEC</span>
             <button
               type="button"
               style={{ background: "transparent", border: "none", color: "inherit", cursor: "pointer", fontSize: "14px" }}

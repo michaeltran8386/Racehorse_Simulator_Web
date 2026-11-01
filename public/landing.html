@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EquiFlow — Quản lý huấn luyện & chuồng trại ngựa đua</title>
+<meta name="description" content="EquiFlow kết nối Chủ ngựa, Huấn luyện viên, Bác sĩ thú y, Nhân viên chăm sóc và Ban quản lý trang trại trên cùng một không gian số." />
+<link rel="icon" href="data:," />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&family=VT323&display=swap" rel="stylesheet" />
+<script>
+  // Theme set before paint so there is no flash.
+  try {
+    const saved = localStorage.getItem("ef-theme");
+    const dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  } catch { document.documentElement.dataset.theme = "light"; }
+</script>
+<style>
+  :root {
+    --bg: #f6f1e4; --bg-2: #ece4cf; --card: #fffdf7; --ink: #1d2a2e; --muted: #5b6b6e; --line: rgba(29, 42, 46, 0.14);
+    --bay: #1f6a96; --bay-2: #2f86b4; --bay-deep: #12405f; --foam: #e8f4f6;
+    --grass: #6ba34a; --grass-2: #4f8a3a; --dirt: #c79a5b; --dirt-2: #a87b42; --wood: #8a5a2b;
+    --sun: #f4b942; --sun-glow: rgba(244, 185, 66, 0.45);
+    --sky-top: #8fcbe8; --sky-bot: #f7e3b3;
+    --accent: #f4b942; --accent-ink: #1d2a2e;
+    --hero-ink: #f6f1e4; --hero-veil: rgba(10, 22, 28, 0.86);
+    --display: "Barlow Condensed", Impact, sans-serif;
+    --body: "Inter", Arial, sans-serif;
+    --pixel: "VT323", monospace;
+    --px: 2; --hs: 3;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1a20; --bg-2: #13232b; --card: #152830; --ink: #ede6d3; --muted: #9baaa8; --line: rgba(237, 230, 211, 0.14);
+    --bay: #0f3a57; --bay-2: #18506f; --bay-deep: #082436; --foam: #9cc3d0;
+    --grass: #2f5a2d; --grass-2: #244823; --dirt: #6e5233; --dirt-2: #57401f; --wood: #6a4522;
+    --sun: #f1e3b0; --sun-glow: rgba(241, 227, 176, 0.25);
+    --sky-top: #0b1a2c; --sky-bot: #2b3f5c;
+    --accent: #f4b942;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.6 var(--body); transition: background 0.4s, color 0.4s; overflow-x: hidden; }
+  a { color: inherit; }
+  img { image-rendering: pixelated; }
+  .wrap { width: min(1200px, 100% - 32px); margin-inline: auto; }
+  .kicker { font: 700 13px/1 var(--body); letter-spacing: 0.16em; text-transform: uppercase; display: flex; gap: 10px; align-items: center; }
+  .kicker::before { content: ""; width: 28px; height: 2px; background: currentColor; opacity: 0.6; }
+  .display { font-family: var(--display); font-weight: 800; text-transform: uppercase; line-height: 0.92; letter-spacing: -0.01em; margin: 0; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 14px 22px; font: 700 15px/1 var(--body); text-decoration: none; border: 2px solid currentColor; cursor: pointer; background: transparent; color: inherit; transition: transform 0.15s, background 0.15s; }
+  .btn:hover { transform: translateY(-2px); }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+  /* Header */
+  .top { position: fixed; inset: 0 0 auto; z-index: 50; color: var(--hero-ink); background: linear-gradient(rgba(8, 18, 24, 0.85), rgba(8, 18, 24, 0)); transition: background 0.3s; }
+  .top.solid { background: rgba(8, 18, 24, 0.94); backdrop-filter: blur(6px); }
+  .top .wrap { display: flex; align-items: center; gap: 20px; height: 64px; }
+  .logo { font: 800 24px/1 var(--display); letter-spacing: 0.02em; text-decoration: none; display: flex; align-items: center; gap: 10px; }
+  .logo small { font: 600 11px/1 var(--body); letter-spacing: 0.18em; opacity: 0.7; border-left: 1px solid currentColor; padding-left: 10px; }
+  .top nav { margin-left: auto; display: flex; gap: 22px; font: 700 12px/1 var(--body); letter-spacing: 0.14em; text-transform: uppercase; }
+  .top nav a { text-decoration: none; opacity: 0.85; }
+  .top nav a:hover { opacity: 1; }
+  .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid rgba(246, 241, 228, 0.35); background: transparent; color: inherit; cursor: pointer; font-size: 18px; }
+  .top .login { padding: 10px 16px; font-size: 13px; }
+
+  /* Hero */
+  .hero { position: relative; min-height: 100svh; color: var(--hero-ink); display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; background: #0a161c; }
+  .hero-bg { position: absolute; inset: 0; background: url("/assets/maps/farm-ground.png") center / cover; image-rendering: pixelated; filter: saturate(0.55) brightness(0.85); transform: scale(1.08); animation: drift 30s ease-in-out infinite alternate; }
+  .hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, var(--hero-veil) 0%, rgba(10, 22, 28, 0.55) 55%, rgba(10, 22, 28, 0.15) 100%), linear-gradient(0deg, rgba(10, 22, 28, 0.95), transparent 40%); }
+  @keyframes drift { to { transform: scale(1.16) translate(-2%, -1%); } }
+  .hero-inner { position: relative; z-index: 2; padding: 120px 0 40px; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 32px; align-items: end; }
+  .hero h1 { font-size: clamp(64px, 11vw, 168px); }
+  .hero h1 span { color: var(--accent); }
+  .hero .sub { font: 700 clamp(20px, 2.3vw, 30px)/1.15 var(--display); text-transform: uppercase; margin: 14px 0 22px; max-width: 18em; }
+  .hero blockquote { margin: 0 0 26px; padding: 4px 0 4px 18px; border-left: 4px solid var(--accent); font-size: clamp(15px, 1.3vw, 18px); max-width: 36em; opacity: 0.92; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; }
+  .stat { display: flex; align-items: center; gap: 12px; border: 1px solid rgba(246, 241, 228, 0.35); padding: 8px 16px; }
+  .stat b { font: 800 34px/1 var(--display); }
+  .stat span { font: 700 11px/1.3 var(--body); letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; }
+  .hero-horse { justify-self: center; position: relative; width: calc(32px * 8); height: calc(32px * 8); }
+  .hero-horse .sprite { --s: 8; }
+  .hero-horse::after { content: ""; position: absolute; left: 18%; right: 18%; bottom: 14px; height: 18px; border-radius: 50%; background: rgba(0, 0, 0, 0.45); filter: blur(4px); z-index: -1; }
+  .hero-foot { position: relative; z-index: 2; border-top: 1px solid rgba(246, 241, 228, 0.2); }
+  .hero-foot .wrap { display: flex; justify-content: space-between; padding: 16px 0; font: 700 12px/1 var(--body); letter-spacing: 0.16em; text-transform: uppercase; }
+  .hero-foot a { text-decoration: none; }
+
+  /* Sprites (32 px cells, 6x6 sheets) */
+  .sprite { --s: 4; width: calc(32px * var(--s)); height: calc(32px * var(--s)); background-repeat: no-repeat; background-size: calc(192px * var(--s)); image-rendering: pixelated; background-position: calc(var(--f, 0) * -32px * var(--s)) calc(var(--r, 0) * -32px * var(--s)); }
+  .horse { background-image: url("/assets/sprites/s01-horse.png"); }
+  .person { background-image: url("/assets/sprites/s06-people.png"); }
+
+  /* Story */
+  .story { padding: clamp(80px, 12vw, 150px) 0; }
+  .story-head { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 40px; align-items: end; margin-bottom: 56px; }
+  .story-head .kicker { color: var(--muted); margin-bottom: 18px; }
+  .story h2 { font-size: clamp(44px, 6.4vw, 92px); }
+  .story-head p { color: var(--muted); font-size: 17px; margin: 0; }
+  .versus { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .vcard { padding: clamp(24px, 3vw, 40px); border-top: 4px solid var(--line); background: var(--card); }
+  .vcard.dark { background: #13262d; color: #ede6d3; border-top-color: var(--accent); }
+  :root[data-theme="dark"] .vcard.dark { background: #1d3a44; }
+  .vcard header { display: flex; justify-content: space-between; font: 700 12px/1 var(--body); letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.7; margin-bottom: 28px; }
+  .vcard h3 { font: 800 clamp(32px, 3.6vw, 48px)/0.95 var(--display); text-transform: uppercase; margin: 0 0 16px; }
+  .vcard p { margin: 0 0 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .chips span { font: 600 13px/1 var(--body); padding: 8px 12px; border: 1px solid currentColor; opacity: 0.85; }
+
+  /* Ride: vertical scroll drives a horizontal world */
+  .ride { position: relative; height: 600vh; }
+  .ride-sticky { position: sticky; top: 0; height: 100svh; overflow: hidden; --off: 0px; }
+  .ride-bar { position: absolute; inset: 64px 0 auto; z-index: 20; background: rgba(8, 18, 24, 0.82); color: #f6f1e4; backdrop-filter: blur(6px); }
+  .ride-bar .wrap { display: flex; align-items: center; gap: 20px; height: 48px; font: 700 12px/1 var(--body); letter-spacing: 0.14em; text-transform: uppercase; }
+  .ride-bar strong { color: var(--accent); }
+  .ride-bar span { white-space: nowrap; }
+  .ride-bar nav { display: flex; gap: 6px; margin-inline: auto; }
+  .ride-bar nav button { width: 38px; height: 6px; border: 0; padding: 0; background: rgba(246, 241, 228, 0.3); cursor: pointer; transition: background 0.2s, width 0.2s; }
+  .ride-bar nav button[aria-current="step"] { background: #f6f1e4; width: 56px; }
+  .ride-fill { height: 3px; background: var(--accent); width: calc(var(--p, 0) * 100%); }
+  .sky { position: absolute; inset: 0; background: linear-gradient(var(--sky-top), var(--sky-bot) 62%); transition: background 0.4s; }
+  .sun { position: absolute; top: 20%; right: 14%; width: 110px; height: 110px; border-radius: 50%; background: var(--sun); box-shadow: 0 0 0 18px var(--sun-glow), 0 0 120px 40px var(--sun-glow); transform: translateX(calc(var(--off) * -0.03)); }
+  .cloud { position: absolute; opacity: 0.9; will-change: transform; }
+  :root[data-theme="dark"] .cloud { opacity: 0.25; }
+  .stars { position: absolute; inset: 0 0 50%; opacity: 0; background-image: radial-gradient(2px 2px at 10% 20%, #fff, transparent), radial-gradient(2px 2px at 30% 60%, #fff, transparent), radial-gradient(1px 1px at 55% 25%, #fff, transparent), radial-gradient(2px 2px at 70% 45%, #fff, transparent), radial-gradient(1px 1px at 85% 15%, #fff, transparent), radial-gradient(1px 1px at 45% 75%, #fff, transparent); background-size: 600px 300px; transition: opacity 0.4s; }
+  :root[data-theme="dark"] .stars { opacity: 0.8; }
+  .bay { position: absolute; left: 0; right: 0; top: 50%; height: 22%; background: linear-gradient(var(--bay-2), var(--bay)); overflow: hidden; }
+  .shore { position: absolute; left: 0; right: 0; top: calc(50% - 26px); height: 28px; background: repeating-linear-gradient(90deg, var(--grass-2) 0 60px, var(--grass) 60px 140px); opacity: 0.6; clip-path: polygon(0 100%, 0 60%, 6% 30%, 14% 55%, 22% 20%, 33% 50%, 41% 35%, 52% 60%, 63% 15%, 74% 45%, 83% 30%, 92% 55%, 100% 25%, 100% 100%); }
+  .wave { position: absolute; left: -10%; right: -10%; height: 100%; background-repeat: repeat-x; image-rendering: pixelated; }
+  .wave.w1 { top: 10%; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='12' shape-rendering='crispEdges'%3E%3Cpath fill='%23e8f4f6' fill-opacity='.55' d='M0 8h8V6h8V4h16v2h8v2h16V6h8V4h16v2h8v2h8v2H0z'/%3E%3C/svg%3E"); background-position: calc(var(--off) * -0.25) 0; animation: bob 3.2s ease-in-out infinite; }
+  .wave.w2 { top: 45%; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='12' shape-rendering='crispEdges'%3E%3Cpath fill='%23e8f4f6' fill-opacity='.35' d='M0 6h16V4h24v2h16v2h24V6h16V4h24v4H0z'/%3E%3C/svg%3E"); background-position: calc(var(--off) * -0.4) 0; animation: bob 2.6s ease-in-out infinite reverse; }
+  .wave.w3 { top: 75%; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='10' shape-rendering='crispEdges'%3E%3Cpath fill='%23e8f4f6' fill-opacity='.25' d='M0 6h24V4h32v2h24v2h32V6h24V4h24v6H0z'/%3E%3C/svg%3E"); background-position: calc(var(--off) * -0.55) 0; animation: bob 3.8s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-5px); } }
+  .glint { position: absolute; top: 52%; height: 4px; width: 40px; background: var(--sun); opacity: 0.6; animation: glint 4s ease-in-out infinite; }
+  @keyframes glint { 50% { opacity: 0.1; transform: scaleX(0.4); } }
+  .ground { position: absolute; left: 0; right: 0; top: 72%; bottom: 0; background: var(--grass); transition: background 0.4s; }
+  .ground::before { content: ""; position: absolute; inset: 0 0 auto; height: 12px; background: repeating-linear-gradient(90deg, var(--grass-2) 0 8px, transparent 8px 20px); background-position-x: calc(var(--off) * -1); }
+  .track { position: absolute; left: 0; right: 0; top: 84%; height: 9%; background: var(--dirt); border-block: 4px solid var(--dirt-2); background-image: repeating-linear-gradient(90deg, transparent 0 34px, rgba(0, 0, 0, 0.08) 34px 38px); background-position-x: calc(var(--off) * -1); }
+  .fence { position: absolute; left: 0; right: 0; top: 79%; height: 28px; background: linear-gradient(var(--wood), var(--wood)) 0 6px / 100% 4px no-repeat, linear-gradient(var(--wood), var(--wood)) 0 16px / 100% 4px no-repeat, repeating-linear-gradient(90deg, var(--wood) 0 6px, transparent 6px 64px); background-position: 0 6px, 0 16px, calc(var(--off) * -1) 0; opacity: 0.9; }
+
+  .world { position: absolute; inset: 0; transform: translateX(calc(var(--off) * -1)); will-change: transform; }
+  .house { position: absolute; bottom: 21%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; transition: filter 0.4s; filter: saturate(0.6) brightness(0.8); }
+  .house img { display: block; height: calc(var(--h) * 1px * var(--px)); transition: transform 0.4s cubic-bezier(.3, 1.6, .5, 1); transform-origin: bottom center; }
+  .house .person { --s: var(--px); position: absolute; bottom: -4px; right: -18%; }
+  .house .glow { position: absolute; inset: 20% 10% -6%; background: radial-gradient(closest-side, var(--sun-glow), transparent); opacity: 0; transition: opacity 0.4s; z-index: -1; }
+  .house .tag { position: absolute; top: -46px; font: 400 26px/1 var(--pixel); background: var(--card); color: var(--ink); padding: 4px 10px 2px; border: 3px solid var(--ink); white-space: nowrap; opacity: 0; transform: translateY(10px); transition: opacity 0.3s, transform 0.3s; }
+  .house .tag::after { content: ""; position: absolute; left: 50%; bottom: -9px; width: 10px; height: 10px; background: var(--card); border: 3px solid var(--ink); border-top: 0; border-left: 0; transform: translateX(-50%) rotate(45deg); }
+  .house.active { filter: none; }
+  .house.active img { transform: scale(1.06); }
+  .house.active .glow { opacity: 1; }
+  .house.active .tag { opacity: 1; transform: none; }
+  .house.near .tag { opacity: 0.6; transform: translateY(4px); }
+  .flag { position: absolute; bottom: 21%; width: 6px; height: 120px; background: var(--wood); }
+  .flag::after { content: attr(data-t); position: absolute; left: 6px; top: 0; padding: 6px 10px; font: 400 22px/1 var(--pixel); background: var(--accent); color: var(--accent-ink); white-space: nowrap; }
+
+  .rider { position: absolute; left: 22vw; bottom: 9%; z-index: 5; transform: translateX(-50%); }
+  .rider .horse { --s: var(--hs); }
+  .rider::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: 4px; height: 10px; border-radius: 50%; background: rgba(0, 0, 0, 0.3); filter: blur(3px); z-index: -1; }
+  .dust { position: absolute; width: 8px; height: 8px; background: var(--dirt); pointer-events: none; animation: puff 0.7s ease-out forwards; z-index: 4; }
+  @keyframes puff { to { transform: translate(var(--dx), var(--dy)) scale(0.2); opacity: 0; } }
+  .wind { position: absolute; height: 2px; background: rgba(255, 255, 255, 0.7); pointer-events: none; animation: wind 0.6s linear forwards; z-index: 4; }
+  @keyframes wind { from { transform: translateX(0) scaleX(0.3); opacity: 0; } 30% { opacity: 0.8; } to { transform: translateX(-160px) scaleX(1); opacity: 0; } }
+
+  .panel { position: absolute; z-index: 10; right: max(16px, calc((100vw - 1200px) / 2)); top: 140px; width: min(440px, 100% - 32px); max-height: calc(100% - 300px); overflow: auto; background: var(--card); color: var(--ink); border: 3px solid var(--ink); box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.25); padding: 24px 26px; transition: opacity 0.3s, transform 0.3s; }
+  .panel.swap { opacity: 0; transform: translateY(12px); }
+  .panel .meta { display: flex; justify-content: space-between; font: 700 12px/1 var(--body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+  .panel h3 { font: 800 clamp(30px, 3.2vw, 42px)/0.95 var(--display); text-transform: uppercase; margin: 0 0 6px; }
+  .panel .en { font: 400 22px/1 var(--pixel); color: var(--muted); }
+  .panel .tagline { margin: 12px 0 14px; padding-left: 12px; border-left: 4px solid var(--accent); font-weight: 600; }
+  .panel ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; font-size: 14.5px; }
+  .panel li { padding-left: 18px; position: relative; }
+  .panel li::before { content: ""; position: absolute; left: 0; top: 8px; width: 8px; height: 8px; background: var(--grass-2); }
+  .panel li b { display: block; }
+  .ride-hint { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 6; font: 400 24px/1 var(--pixel); color: #fff; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5); transition: opacity 0.3s; }
+
+  /* Experiences */
+  .exp { padding: clamp(80px, 12vw, 150px) 0; background: var(--bg-2); transition: background 0.4s; }
+  .exp h2 { font-size: clamp(44px, 6vw, 86px); margin: 18px 0 48px; max-width: 12em; }
+  .exp .kicker { color: var(--muted); }
+  .exp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .ecard { background: var(--card); padding: 26px; border-top: 4px solid var(--accent); display: flex; flex-direction: column; gap: 10px; min-height: 260px; }
+  .ecard .num { font: 400 30px/1 var(--pixel); color: var(--muted); }
+  .ecard h3 { font: 800 30px/1 var(--display); text-transform: uppercase; margin: 0; }
+  .ecard p { margin: 0; color: var(--muted); font-size: 15px; }
+  .ecard .btn { margin-top: auto; align-self: flex-start; padding: 10px 14px; font-size: 13px; }
+
+  /* CTA */
+  .cta { position: relative; padding: clamp(90px, 14vw, 180px) 0; background: #0a161c; color: var(--hero-ink); overflow: hidden; }
+  .cta::before { content: ""; position: absolute; inset: 0; background: url("/assets/maps/farm-ground.png") center / cover; image-rendering: pixelated; opacity: 0.18; }
+  .cta .wrap { position: relative; }
+  .cta h2 { font-size: clamp(54px, 9vw, 140px); max-width: 10em; margin: 18px 0 26px; }
+  .cta h2 span { color: var(--accent); }
+  .cta p { max-width: 38em; opacity: 0.85; font-size: 17px; margin: 0 0 30px; }
+  .cta .sign { margin-top: 56px; font: 400 26px/1.2 var(--pixel); opacity: 0.85; }
+  footer { background: #060e12; color: #9baaa8; font-size: 13px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; padding: 22px 0; flex-wrap: wrap; }
+
+  .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s, transform 0.7s; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (max-width: 900px) {
+    :root { --px: 1; --hs: 2; }
+    .top nav { display: none; }
+    .top .login { display: none; }
+    .top .wrap { justify-content: space-between; }
+    .hero-inner { grid-template-columns: 1fr; }
+    .hero-horse { display: none; }
+    .story-head, .versus { grid-template-columns: 1fr; }
+    .exp-grid { grid-template-columns: 1fr 1fr; }
+    .ride-bar .label { display: none; }
+    .ride-bar nav { margin-inline: 0 auto; }
+    .ride-bar nav button { width: 24px; }
+    .ride-bar nav button[aria-current="step"] { width: 36px; }
+    .panel { top: auto; bottom: 12px; right: 12px; left: 12px; width: auto; max-height: 42%; padding: 16px 18px; }
+    .panel ul { font-size: 13.5px; }
+    .bay { top: 22%; height: 16%; }
+    .shore { top: calc(22% - 20px); }
+    .glint { top: 25%; }
+    .ground { top: 37%; }
+    .fence { top: 42%; }
+    .track { top: 47%; height: 7%; }
+    .house { bottom: 54%; }
+    .flag { bottom: 54%; height: 80px; }
+    .rider { bottom: 45%; left: 24vw; }
+    .sun { top: 15%; width: 64px; height: 64px; }
+    .ride-hint { bottom: auto; top: 128px; }
+  }
+  @media (max-width: 520px) {
+    .exp-grid { grid-template-columns: 1fr; }
+    .ecard { min-height: 0; }
+    .logo small { display: none; }
+    #stepName { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .hero-bg, .wave, .glint { animation: none; }
+    .reveal { transform: none; }
+    .house img, .panel, .house .tag { transition: opacity 0.3s; transform: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top" id="top">
+  <div class="wrap">
+    <a class="logo" href="#">EQUIFLOW <small>TRANG TRẠI SỐ</small></a>
+    <nav aria-label="Mục chính">
+      <a href="#story">Câu chuyện</a>
+      <a href="#ride">Vai trò</a>
+      <a href="#exp">Trải nghiệm</a>
+    </nav>
+    <button class="icon-btn" id="themeBtn" type="button" aria-label="Đổi giao diện sáng/tối">☾</button>
+    <a class="btn btn-primary login" href="http://localhost:5173/login">Đăng nhập</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero" aria-label="Giới thiệu">
+    <div class="hero-bg" aria-hidden="true"></div>
+    <div class="wrap hero-inner">
+      <div>
+        <p class="kicker">EquiFlow / Nền tảng ngựa đua thông minh</p>
+        <h1 class="display">Equi<span>Flow</span>.</h1>
+        <p class="sub">Nền tảng quản lý huấn luyện &amp; chuồng trại ngựa đua thông minh.</p>
+        <blockquote>“Mỗi chiến mã là một linh hồn kiêu hãnh trên đường đua. EquiFlow ra đời để cùng bạn chăm sóc, thấu hiểu và nâng niu từng bước chạy ấy bằng cả trái tim cùng sự hỗ trợ của công nghệ hiện đại.”</blockquote>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#ride">Bắt đầu hành trình ↓</a>
+          <div class="stat"><b>5</b><span>vai trò<br />một không gian số</span></div>
+        </div>
+      </div>
+      <div class="hero-horse" aria-hidden="true"><div class="sprite horse" id="heroHorse" style="--r:3"></div></div>
+    </div>
+    <div class="hero-foot">
+      <div class="wrap"><a href="#story">Cuộn để tiếp tục ↓</a><a href="#ride">Đến ngôi nhà đầu tiên →</a></div>
+    </div>
+  </section>
+
+  <section class="story" id="story">
+    <div class="wrap">
+      <div class="story-head reveal">
+        <div>
+          <p class="kicker">Câu chuyện / EquiFlow</p>
+          <h2 class="display">Không chỉ là kinh doanh. Đó là một hành trình gắn kết.</h2>
+        </div>
+        <p>Từ bữa ăn sáng giàu dinh dưỡng, bài tập chạy nước rút buổi sớm, cho đến từng vết sưng nhỏ ở cổ chân sau buổi tập đường cát — mọi chi tiết đều vô cùng quan trọng.</p>
+      </div>
+      <div class="versus">
+        <article class="vcard reveal">
+          <header><span>01 / Trước đây</span><span>Rời rạc</span></header>
+          <h3>Sổ sách rời rạc, tin tức đến muộn</h3>
+          <p>Việc quản lý trang trại ngựa thường gặp khó khăn vì sổ sách rời rạc, thông tin sức khỏe không đồng bộ.</p>
+          <p>Chủ ngựa ở xa không nắm bắt kịp thời tình hình của “đứa con cưng” của mình.</p>
+        </article>
+        <article class="vcard dark reveal">
+          <header><span>02 / Với EquiFlow</span><span>Một nhịp cầu</span></header>
+          <h3>Một không gian số, tràn ngập yêu thương</h3>
+          <p>EquiFlow ra đời như một nhịp cầu gắn kết mọi người quanh chú ngựa — trực quan, tiện lợi và tràn ngập tình yêu thương với loài ngựa.</p>
+          <div class="chips"><span>Chủ ngựa</span><span>Huấn luyện viên</span><span>Bác sĩ thú y</span><span>Nhân viên chăm sóc</span><span>Ban quản lý</span></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="ride" id="ride" aria-label="Năm ngôi nhà của EquiFlow">
+    <div class="ride-sticky" id="stage">
+      <div class="ride-bar">
+        <div class="wrap">
+          <span class="label">Ngôi nhà</span><span><strong id="stepNow">01</strong> / 05</span>
+          <nav id="dots" aria-label="Chuyển đến ngôi nhà"></nav>
+          <span id="stepName">Chủ ngựa</span>
+        </div>
+        <div class="ride-fill"></div>
+      </div>
+      <div class="sky"></div>
+      <div class="stars"></div>
+      <div class="sun" aria-hidden="true"></div>
+      <div id="clouds" aria-hidden="true"></div>
+      <div class="shore"></div>
+      <div class="bay" aria-hidden="true"><div class="wave w1"></div><div class="wave w2"></div><div class="wave w3"></div></div>
+      <div class="glint" style="left:30%"></div><div class="glint" style="left:68%;animation-delay:-2s"></div>
+      <div class="ground"></div>
+      <div class="fence"></div>
+      <div class="track"></div>
+      <div class="world" id="world"></div>
+      <div class="rider" id="rider" aria-hidden="true"><div class="sprite horse" id="horse"></div></div>
+      <p class="ride-hint" id="hint">cuộn để phi nước đại →</p>
+      <article class="panel" id="panel" aria-live="polite"></article>
+    </div>
+  </section>
+
+  <section class="exp" id="exp">
+    <div class="wrap">
+      <p class="kicker reveal">Trải nghiệm nhỏ / ấm lòng</p>
+      <h2 class="display reveal">Những điều nhỏ nhưng rất “ấm lòng”.</h2>
+      <div class="exp-grid">
+        <article class="ecard reveal"><span class="num">01</span><h3>Song ngữ Việt – Anh</h3><p>Hỗ trợ Tiếng Việt và Tiếng Anh mượt mà, chuyển đổi nhanh chóng chỉ bằng một nút bấm.</p></article>
+        <article class="ecard reveal"><span class="num">02</span><h3>Sáng &amp; Tối</h3><p>Giao diện Sáng thanh lịch và giao diện Tối dịu mắt khi làm việc ban đêm.</p><button class="btn" type="button" data-theme-toggle>Thử ngay ☾</button></article>
+        <article class="ecard reveal"><span class="num">03</span><h3>Thông báo kịp thời</h3><p>Chuông nhắc ngay khi có kết quả bài tập mới, lịch khám sức khỏe hoặc hóa đơn được phát hành.</p></article>
+        <article class="ecard reveal"><span class="num">04</span><h3>An toàn &amp; riêng tư</h3><p>Mỗi người dùng có tài khoản và phân quyền rõ ràng; thông tin chiến mã luôn được bảo mật.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta" id="cta">
+    <div class="wrap reveal">
+      <p class="kicker">Bắt đầu / Hôm nay</p>
+      <h2 class="display">Sẵn sàng trải nghiệm cùng <span>EquiFlow!</span></h2>
+      <p>Trang web thân thiện, dễ nhìn và dễ sử dụng ngay cả với những ai không rành về máy tính. Hãy đăng nhập, khám phá những ô chuồng rợp bóng mát và gửi gắm tình yêu thương đến những chú chiến mã kiêu hùng.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="http://localhost:5173/login">Đăng nhập</a>
+        <a class="btn" href="/">Khám phá trang trại →</a>
+      </div>
+      <p class="sign">EquiFlow — Vì sức khỏe chiến mã, vì niềm tin của người đồng hành.</p>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap"><span>© 2026 EquiFlow · SWP391</span><a href="#top">Lên đầu trang ↑</a></div></footer>
+
+<script>
+(() => {
+  const ROLES = [
+    { vi: "Chủ Ngựa", en: "Horse Owner", img: "groom-house", h: 144, row: 4, tagline: "An tâm tuyệt đối dù ở bất kỳ đâu.",
+      items: [["Theo dõi sức khỏe 24/7", "Cân nặng, nhiệt độ, lịch tiêm phòng và kết quả thăm khám định kỳ — minh bạch."],
+              ["Xem tiến trình tập luyện", "Hôm nay chạy bao nhiêu mét, đạt bao nhiêu km/h, phong độ ra sao."],
+              ["Giải đấu & vinh quang", "Kết quả từng giải, thứ hạng, thành tích thời gian và tiền thưởng."],
+              ["Hóa đơn rõ ràng", "Chi phí chuồng trại, thức ăn, y tế được tổng hợp chi tiết, công khai."]] },
+    { vi: "Huấn Luyện Viên Trưởng", en: "Head Trainer", img: "barn", h: 128, row: 1, tagline: "Bản lĩnh kiến tạo nhà vô địch.",
+      items: [["Lập giáo án thông minh", "Theo giai đoạn: thể lực cơ bản, tăng tốc, nước rút, thích nghi địa hình."],
+              ["Lịch tập trực quan", "Xếp lịch hàng ngày cho từng chú ngựa, giao việc cho từng nài ngựa."],
+              ["Mô phỏng đường chạy", "Digital Twin chạy thử trước buổi tập thật: gió, mặt sân cỏ/cát, nhịp tim."],
+              ["Cảnh báo an toàn tự động", "Ngựa đang theo dõi sức khỏe hay chấn thương sẽ bị chặn bài tập nặng."]] },
+    { vi: "Bác Sĩ Thú Y", en: "Veterinarian", img: "vet", h: 128, row: 2, tagline: "Lá chắn y tế vững chắc.",
+      items: [["Hồ sơ bệnh án điện tử", "Lịch sử thăm khám, đơn thuốc, chẩn đoán và ảnh siêu âm gân/cơ."],
+              ["Khóa Y Tế (Medical Lock)", "Một thao tác: báo khẩn đến HLV, Quản lý, Chủ ngựa và hoãn mọi buổi tập nặng đến khi bình phục."],
+              ["Lịch tiêm phòng & chăm sóc", "Nhắc vắc-xin cúm ngựa, tẩy giun sán, khám răng, cắt gọt móng."]] },
+    { vi: "Nhân Viên Chăm Sóc Chuồng", en: "Groom", img: "stable", h: 128, row: 3, tagline: "Người bạn gần gũi nhất mỗi ngày.",
+      items: [["Sổ tay công việc mỗi ngày", "Cho ăn yến mạch lúc mấy giờ, dọn rơm, chườm đá phục hồi chân, dắt ngựa dạo 15 phút."],
+              ["Ghi chú nhanh chóng", "Bấm hoàn thành ngay trên điện thoại; ghi lại khi ngựa ăn kém hoặc có biểu hiện lạ."]] },
+    { vi: "Ban Quản Lý Trang Trại", en: "Club Manager", img: "track", h: 184, row: 0, tagline: "Vận hành trơn tru, nắm trọn trong tay.",
+      items: [["Sơ đồ chuồng trại sinh động", "Khu A, B, C: ô nào có ngựa, ô nào trống, ô nào đang vệ sinh."],
+              ["Tổ chức giải đua", "Mở đăng ký, xếp bảng đấu, chốt kết quả và chia thưởng minh bạch."],
+              ["Quản lý kho vật tư", "Cỏ Timothy, cám yến mạch, thuốc men; duyệt nhập kho khi sắp hết."],
+              ["Báo cáo tài chính", "Hóa đơn dịch vụ, doanh thu và chi phí chỉ với vài cú nhấp chuột."]] },
+  ];
+  const N = ROLES.length;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const $ = (id) => document.getElementById(id);
+  const stage = $("stage"), world = $("world"), panel = $("panel"), ride = $("ride"), horse = $("horse"), rider = $("rider");
+  const pad = (n) => String(n).padStart(2, "0");
+
+  // Theme
+  const setTheme = (t) => {
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem("ef-theme", t); } catch {}
+    $("themeBtn").textContent = t === "dark" ? "☀" : "☾";
+  };
+  const toggle = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  setTheme(document.documentElement.dataset.theme);
+  $("themeBtn").onclick = toggle;
+  document.querySelectorAll("[data-theme-toggle]").forEach((b) => (b.onclick = toggle));
+
+  // Header gets solid once past the hero
+  const top = $("top");
+  const onTop = () => top.classList.toggle("solid", scrollY > innerHeight * 0.6);
+
+  // Build world: one house per role, spaced by `gap` px
+  let gap = 0, horseX = 0;
+  const houses = ROLES.map((r, i) => {
+    const el = document.createElement("div");
+    el.className = "house";
+    el.style.setProperty("--h", r.h);
+    el.innerHTML = `<div class="glow"></div><span class="tag">${pad(i + 1)} · ${r.en}</span>
+      <img src="/assets/maps/objects/${r.img}.png" alt="Ngôi nhà ${r.vi}" />
+      <div class="sprite person" style="--r:${r.row};--f:4"></div>`;
+    world.appendChild(el);
+    return el;
+  });
+  const flags = ["XUẤT PHÁT", "ĐÍCH"].map((t) => {
+    const f = document.createElement("div");
+    f.className = "flag"; f.dataset.t = t; world.appendChild(f); return f;
+  });
+  const clouds = ["big", "mid1", "small1", "mid2", "small2", "small3"].map((c, i) => {
+    const img = new Image();
+    img.src = `/assets/clouds/${c}.png`; img.alt = ""; img.className = "cloud";
+    img.style.top = `${4 + (i % 3) * 9}%`;
+    img.style.width = c === "big" ? "240px" : c.startsWith("mid") ? "130px" : "80px";
+    $("clouds").appendChild(img);
+    return { img, x: i * 420 + 80, k: 0.08 + (i % 3) * 0.05 };
+  });
+
+  const layout = () => {
+    const w = stage.clientWidth;
+    horseX = rider.offsetLeft;
+    gap = Math.max(w * 0.72, 560);
+    houses.forEach((h, i) => (h.style.left = `${horseX + gap * (i + 0.5)}px`));
+    flags[0].style.left = `${horseX + 40}px`;
+    flags[1].style.left = `${horseX + gap * N + 20}px`;
+  };
+
+  // Dots
+  const dots = ROLES.map((r, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.setAttribute("aria-label", `${i + 1}. ${r.vi}`);
+    b.onclick = () => scrollTo({ top: ride.offsetTop + ((i + 0.5) / N) * (ride.offsetHeight - innerHeight), behavior: reduce ? "auto" : "smooth" });
+    $("dots").appendChild(b);
+    return b;
+  });
+
+  let active = -1;
+  const renderPanel = (i) => {
+    const r = ROLES[i];
+    panel.innerHTML = `<div class="meta"><span>${pad(i + 1)} / ${pad(N)}</span><span>Ngôi nhà ${pad(i + 1)}</span></div>
+      <h3>${r.vi}</h3><span class="en">${r.en}</span>
+      <p class="tagline">${r.tagline}</p>
+      <ul>${r.items.map(([b, t]) => `<li><b>${b}</b>${t}</li>`).join("")}</ul>`;
+  };
+  const setActive = (i) => {
+    if (i === active) return;
+    active = i;
+    houses.forEach((h, k) => {
+      h.classList.toggle("active", k === i);
+      h.classList.toggle("near", Math.abs(k - i) === 1);
+      h.querySelector(".person").style.setProperty("--f", k === i ? 5 : 4);
+    });
+    dots.forEach((d, k) => (k === i ? d.setAttribute("aria-current", "step") : d.removeAttribute("aria-current")));
+    $("stepNow").textContent = pad(i + 1);
+    $("stepName").textContent = ROLES[i].vi;
+    panel.classList.add("swap");
+    setTimeout(() => { renderPanel(i); panel.classList.remove("swap"); }, reduce ? 0 : 180);
+  };
+
+  // Scroll -> progress -> world offset. Smoothed with a lerp for a softer camera.
+  let target = 0, off = 0, lastOff = 0, t0 = performance.now(), frameAcc = 0, frame = 0, dustAcc = 0;
+  const progress = () => {
+    const r = ride.getBoundingClientRect();
+    return Math.min(1, Math.max(0, -r.top / (ride.offsetHeight - innerHeight)));
+  };
+  const onScroll = () => { onTop(); target = progress() * gap * N; };
+
+  const spawn = (cls, x, y, extra) => {
+    const d = document.createElement("div");
+    d.className = cls; d.style.left = `${x}px`; d.style.top = `${y}px`;
+    if (extra) Object.assign(d.style, extra);
+    d.addEventListener("animationend", () => d.remove());
+    stage.appendChild(d);
+  };
+
+  const tick = (now) => {
+    const dt = Math.min(64, now - t0); t0 = now;
+    off += (target - off) * (reduce ? 1 : Math.min(1, dt / 120));
+    const v = Math.abs(off - lastOff) / dt; // px per ms
+    lastOff = off;
+    stage.style.setProperty("--off", `${off}px`);
+    stage.style.setProperty("--p", (off / (gap * N)) || 0);
+    clouds.forEach((c) => {
+      const span = stage.clientWidth + 300;
+      const x = (((c.x - off * c.k + now * 0.004) % span) + span) % span - 250;
+      c.img.style.transform = `translateX(${x}px)`;
+    });
+    setActive(Math.min(N - 1, Math.floor((off / gap))));
+    $("hint").style.opacity = off < 30 ? 1 : 0;
+
+    // Horse: gallop while moving (faster = quicker frames), idle when still
+    const running = v > 0.05 && !reduce;
+    horse.style.setProperty("--r", running ? 3 : 0);
+    frameAcc += dt * (running ? Math.min(3, 0.6 + v) : 0.25);
+    if (frameAcc > 70) { frameAcc = 0; frame = (frame + 1) % 6; horse.style.setProperty("--f", frame); }
+    rider.style.translate = running ? `0 ${frame % 3 === 0 ? -3 : 0}px` : "0 0";
+    if (running) {
+      dustAcc += dt * Math.min(2, v);
+      if (dustAcc > 40) {
+        dustAcc = 0;
+        const box = rider.getBoundingClientRect(), sb = stage.getBoundingClientRect();
+        const x = box.left - sb.left + box.width * 0.2, y = box.bottom - sb.top - 14;
+        spawn("dust", x, y, { "--dx": `${-40 - Math.random() * 50}px`, "--dy": `${-10 - Math.random() * 25}px` });
+        if (Math.random() < 0.3) spawn("wind", x + box.width * 0.6, box.top - sb.top + Math.random() * box.height * 0.6, { width: `${30 + Math.random() * 40}px` });
+      }
+    }
+    requestAnimationFrame(tick);
+  };
+
+  // Hero horse gallops in place
+  let hf = 0;
+  if (!reduce) setInterval(() => $("heroHorse").style.setProperty("--f", (hf = (hf + 1) % 6)), 90);
+
+  // Reveal on view
+  const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && (e.target.classList.add("in"), io.unobserve(e.target))), { threshold: 0.15 });
+  document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+
+  addEventListener("resize", () => { layout(); onScroll(); });
+  addEventListener("scroll", onScroll, { passive: true });
+  layout(); onScroll(); off = target; renderPanel(0); setActive(0);
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

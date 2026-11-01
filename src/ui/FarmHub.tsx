@@ -5,8 +5,6 @@ import { assignPaddockHorses, assignStableHorses } from "../hub/farmPopulation";
 import { stockLevel, type Inventory, type SupplyId } from "../sim/inventory";
 import { SupplyPanel } from "./SupplyPanel";
 import { StallTab } from "./StallTab";
-import { initStalls } from "../sim/stallAllocation";
-import type { MockStall } from "../sim/mockData";
 import { VetZone } from "./VetZone";
 import { GroomTab } from "./GroomTab";
 import type { HorseProfile } from "../sim/engine";
@@ -63,7 +61,6 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
   const [supplyOpen, setSupplyOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [cardId, setCardId] = useState<string | null>(null);
-  const [stalls, setStalls] = useState<MockStall[]>(() => initStalls());
   const [stallOpen, setStallOpen] = useState(false);
   const [stallSel, setStallSel] = useState<string | null>(null);
   const [vetOpen, setVetOpen] = useState(Boolean(initialVetOpen));
@@ -139,7 +136,7 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
       {/* Trên-trái: đồng hồ + ngày/đêm + âm thanh */}
       <div className={`${c.hud} ${c.topLeft}`}>
         <div className={c.pill}>
-          <span className={c.pillLabel}>EquiFlow</span>
+          <span className={c.pillLabel}>TMEC</span>
           <span className={c.clock}>{time}</span>
         </div>
         <button
@@ -231,6 +228,7 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
           type="button"
           className={c.bigRound}
           data-tone={speed === 0 ? "pause" : undefined}
+          data-control
           aria-label={`Tốc độ mô phỏng ${speed === 0 ? "tạm dừng" : `${speed} lần`}, bấm để đổi sang ${nextSpeed === 0 ? "tạm dừng" : `${nextSpeed} lần`}`}
           onClick={() => {
             playSfx("ui-click");
@@ -262,8 +260,6 @@ export function FarmHub({ sprites, horses, reported, speed, speeds, onSpeed, onE
             onSelect={setStallSel}
             onIncident={onIncident}
             onOpenCard={openCard}
-            stalls={stalls}
-            onStallsChange={setStalls}
           />
         </Popup>
       )}

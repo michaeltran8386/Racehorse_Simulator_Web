@@ -39,6 +39,8 @@ import { TrialTab } from "./TrialTab";
 import { AudioControl } from "./AudioControl";
 import { audio } from "../audio/audioManager";
 import s from "./ui.module.css";
+import { AdminLockButton } from "./AdminLock";
+import { initialUnlocked } from "../sim/adminPin.ts";
 
 type TrackTab = "TRIAL" | "RACE";
 const NAV: Screen[] = ["HUB", "TRACK"];
@@ -55,6 +57,9 @@ export function App() {
   const query = new URLSearchParams(window.location.search);
   const sessionId = query.get("sessionId")?.trim() || query.get("session_id")?.trim() || null;
 
+  const [canControl, setCanControl] = useState(() =>
+    initialUnlocked(typeof localStorage === "undefined" ? null : localStorage, sessionId),
+  );
   const [simulationContext, setSimulationContext] = useState<SimulationContext | null>(null);
   const [loadingContext, setLoadingContext] = useState<boolean>(true);
   const [contextError, setContextError] = useState<string | null>(null);
@@ -396,14 +401,14 @@ export function App() {
   }
 
   return (
-    <div className={c.shell} data-screen={screen}>
+    <div className={c.shell} data-screen={screen} data-view-only={!canControl}>
       <header className={c.header}>
         <button type="button" className={c.brand} onClick={() => go("HUB")} aria-label="Về trang trại">
           <span className={c.logo} aria-hidden>
             EF
           </span>
           <span>
-            <span className={c.product}>EquiFlow Simulator</span>
+            <span className={c.product}>TMEC Simulator</span>
             <span className={c.tagline}>Trang trại ngựa đua mô phỏng v3</span>
           </span>
         </button>
@@ -438,13 +443,14 @@ export function App() {
           )}
 
           <AudioControl />
+          <AdminLockButton unlocked={canControl} onChange={setCanControl} />
 
           {simScreen && (
             <>
               <span className={c.device}>
                 <span className={c.dot} /> Đang mô phỏng
               </span>
-              <div className={c.speed} role="group" aria-label="Tốc độ mô phỏng">
+              <div className={c.speed} role="group" aria-label="Tốc độ mô phỏng" data-control>
                 {SPEEDS.map((v) => (
                   <button
                     key={v}

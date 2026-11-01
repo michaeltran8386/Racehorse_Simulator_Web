@@ -1,7 +1,7 @@
 // Vẽ cảnh pixel art bằng Canvas 2D: đường đua nhìn ngang (chạy thử / đua 6 làn) và sơ đồ chuồng 6×6.
 // Màu ở đây là bảng màu của tranh game (không phải token giao diện).
 import { OBSTACLE, type HorseProfile, type Incident, type Obstacle, type RunStatus, type StallHealth, type Surface, type TrackCondition } from "../sim/engine";
-import type { MockStall, MockStallZone } from "../sim/mockData";
+import type { Stall, StallZone } from "../sim/stallMap";
 import { drawFrame, ROW, tinted, type Sprites } from "./sprites";
 
 export const ART = {
@@ -349,8 +349,8 @@ export function drawZoneStalls(
   w: number,
   h: number,
   sp: Sprites,
-  zone: MockStallZone,
-  zoneStalls: readonly MockStall[],
+  zone: StallZone,
+  zoneStalls: readonly Stall[],
   horses: HorseProfile[],
   vitals: Map<string, { hr: number }>,
   selectedStallCode: string | null,
@@ -363,7 +363,6 @@ export function drawZoneStalls(
   rect(ctx, 0, 0, w, h, ART.woodDark);
 
   const horsesById = new Map(horses.map((hz) => [hz.id, hz]));
-  const horsesByName = new Map(horses.map((hz) => [hz.name.toLowerCase(), hz]));
 
   for (const s of zoneStalls) {
     const x = s.col * cw;
@@ -381,14 +380,12 @@ export function drawZoneStalls(
         rect(ctx, x + 3 + stripe, y + 3 + ch * 0.34, 8, ch * 0.66 - 6, "rgba(230, 126, 34, 0.28)");
       }
       label(ctx, "⚒ ĐANG BẢO TRÌ", x + cw / 2, y + ch * 0.58, 16, "#E67E22", "center", "VT323");
-      label(ctx, "Thay đệm lót & van nước", x + cw / 2, y + ch * 0.76, 13, "rgba(255,255,255,0.75)", "center", "VT323");
     } else if (s.status === "INACTIVE") {
       rect(ctx, x + 3, y + 3 + ch * 0.34, cw - 6, ch * 0.66 - 6, "#34495E");
       label(ctx, "⊘ NGỪNG SỬ DỤNG", x + cw / 2, y + ch * 0.58, 16, "#95A5A6", "center", "VT323");
-      label(ctx, "Nâng cấp áp lực âm", x + cw / 2, y + ch * 0.76, 13, "rgba(255,255,255,0.65)", "center", "VT323");
     } else {
       // AVAILABLE hoặc OCCUPIED
-      const horse = s.horseId ? horsesById.get(s.horseId) ?? (s.horseName ? horsesByName.get(s.horseName.toLowerCase()) : undefined) : undefined;
+      const horse = s.horseId ? horsesById.get(s.horseId) : undefined;
       rect(ctx, x + 3, y + 3 + ch * 0.34, cw - 6, ch * 0.66 - 6, horse ? ART.straw : ART.empty);
       for (let strawI = 0; strawI < 10; strawI++) {
         const sx = x + 6 + hash(s.row * 97 + s.col * 13 + strawI) * (cw - 14);
@@ -398,7 +395,8 @@ export function drawZoneStalls(
       rect(ctx, x + 3, y + ch * 0.36 - 4, cw * 0.18, 6, ART.woodLight); // máng ăn
 
       if (!horse) {
-        label(ctx, "Trống (Sẵn sàng)", x + cw / 2, y + ch * 0.72, 15, "rgba(30,38,34,0.55)", "center", "VT323");
+        // Ô có ngựa nhưng ngựa không thuộc phiên mô phỏng này: chỉ hiện tên, không vẽ ngựa giả
+        label(ctx, s.horseName ?? "Trống (Sẵn sàng)", x + cw / 2, y + ch * 0.72, 15, "rgba(30,38,34,0.55)", "center", "VT323");
       } else {
         const color = HEALTH_COLOR[horse.health];
         ctx.strokeStyle = color;

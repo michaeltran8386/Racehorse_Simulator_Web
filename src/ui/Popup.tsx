@@ -16,6 +16,9 @@ export function Popup({ title, onClose, children }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const [closing, setClosing] = useState(false);
   const titleId = useId(); // bảng có thể chồng nhau (thẻ ngựa trên bảng chuồng)
+  // Cha thường truyền onClose inline và render lại liên tục; giữ trong ref để không khởi động lại đếm giờ đóng.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const dialog = ref.current;
@@ -30,10 +33,10 @@ export function Popup({ title, onClose, children }: Props) {
     audio.playSfx("ui-close");
     const t = window.setTimeout(() => {
       ref.current?.close();
-      onClose();
+      onCloseRef.current();
     }, CLOSE_MS);
     return () => clearTimeout(t);
-  }, [closing, onClose]);
+  }, [closing]);
 
   const requestClose = () => setClosing(true);
 
@@ -44,6 +47,8 @@ export function Popup({ title, onClose, children }: Props) {
       data-closing={closing}
       aria-labelledby={titleId}
       onCancel={(e) => {
+        // Bảng lồng trong bảng: React đưa sự kiện cancel lên cả bảng cha, chỉ đóng bảng trên cùng.
+        if (e.target !== e.currentTarget) return;
         e.preventDefault(); // Esc: chạy hiệu ứng đóng thay vì tắt ngay
         requestClose();
       }}

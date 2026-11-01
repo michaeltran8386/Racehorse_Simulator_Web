@@ -1,16 +1,16 @@
-// Phân khu chuồng ngựa A, B, C chuẩn hóa theo CSDL EquiFlow (SRS SC-1.07 & RULE-MED-01)
-// Tối giản hóa giao diện: Canvas sơ đồ chuồng 2D làm trọng tâm, hỗ trợ gán / rút ngựa tương tác tức thì.
-import { useRef, useState } from "react";
+// Sơ đồ khu chuồng thật lấy từ BE (GET /simulator/stalls), chỉ đọc (SRS SC-1.07 & RULE-MED-01).
+// Phân/rút chuồng là nghiệp vụ của Web chính (cần quyền Club Manager / Head Trainer), Simulator không tự đổi.
+import { useCallback, useEffect, useRef, useState } from "react";
 import { publish } from "../sim/bus";
 import { stepRest, type HorseProfile } from "../sim/engine";
 import { LIFECYCLE_LABEL } from "../sim/horses";
 import { INCIDENT_LABEL, incidentPacket, horseRef } from "../sim/packets";
 import { drawZoneStalls, HEALTH_COLOR, stallActivity } from "../render/scenes";
 import type { Sprites } from "../render/sprites";
-import { MOCK_STALL_ZONES, type MockStallZone, type MockStall } from "../sim/mockData";
-import { initStalls, assignHorseToStall, unassignHorseFromStall } from "../sim/stallAllocation";
-import { AssignHorseModal } from "./AssignHorseModal";
+import type { StallZone } from "../sim/stallMap";
+import { fetchStallZones } from "../api/farmDataApi";
 import { PixelCanvas } from "./PixelCanvas";
+import { Popup } from "./Popup";
 import s from "./ui.module.css";
 import t from "./Tabs.module.css";
 
@@ -25,34 +25,37 @@ interface Props {
   onSelect: (id: string) => void;
   onIncident: (horseId: string) => void;
   onOpenCard: (horseId: string) => void;
-  /** Danh sách ô chuồng được truyền từ ngoài hoặc tự quản lý nội bộ */
-  stalls?: MockStall[];
-  onStallsChange?: (stalls: MockStall[]) => void;
 }
 
 const ACTIVITY_LABEL = { IDLE: "Đứng thở", GRAZE: "Ăn cỏ / ngũ cốc", LIE: "Nằm nghỉ" } as const;
 
-export function StallTab({
-  horses,
-  sprites,
-  speed,
-  selectedId,
-  onSelect,
-  onIncident,
-  onOpenCard,
-  stalls: externalStalls,
-  onStallsChange,
-}: Props) {
-  const [internalStalls, setInternalStalls] = useState<MockStall[]>(() => initStalls());
-  const allStalls = externalStalls ?? internalStalls;
+export function StallTab({ horses, sprites, speed, selectedId, onSelect, onIncident, onOpenCard }: Props) {
+  const [zones, setZones] = useState<StallZone[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const vitals = useRef(new Map<string, Vitals>());
   const loop = useRef({ simT: 0, realT: 0, snapAcc: 0, uiAcc: 0 });
   const [, force] = useState(0);
 
-  const [activeZoneCode, setActiveZoneCode] = useState<"ZONE-A" | "ZONE-B" | "ZONE-C">("ZONE-A");
-  const [selectedStallCode, setSelectedStallCode] = useState<string>("A-01");
-  const [assigningStall, setAssigningStall] = useState<MockStall | null>(null);
+  const [activeZoneCode, setActiveZoneCode] = useState<string | null>(null);
+  const [selectedStallCode, setSelectedStallCode] = useState<string | null>(null);
+  // Chạm ô chuồng mở chi tiết thành bảng nổi đè lên sơ đồ, không đẩy sơ đồ lên.
+  const [detailOpen, setDetailOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const data = await fetchStallZones();
+      setZones(data);
+      setActiveZoneCode((cur) => cur ?? data[0]?.code ?? null);
+    } catch (err) {
+      setLoadError((err as Error).message || "Không kết nối được máy chủ.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const horsesRef = useRef(horses);
   horsesRef.current = horses;
@@ -63,8 +66,8 @@ export function StallTab({
     }
   }
 
-  const currentZone = MOCK_STALL_ZONES.find((z) => z.code === activeZoneCode) ?? MOCK_STALL_ZONES[0];
-  const zoneStalls = allStalls.filter((st) => st.zoneCode === activeZoneCode);
+  const currentZone = zones?.find((z) => z.code === activeZoneCode) ?? zones?.[0] ?? null;
+  const zoneStalls = currentZone?.stalls ?? [];
 
   const onFrame = (ctx: CanvasRenderingContext2D, w: number, h: number, dtReal: number) => {
     const L = loop.current;
@@ -102,15 +105,26 @@ export function StallTab({
       force((n) => n + 1);
     }
 
-    drawZoneStalls(ctx, w, h, sprites, currentZone, zoneStalls, horsesRef.current, vitals.current, selectedStallCode, L.realT);
+    if (currentZone) drawZoneStalls(ctx, w, h, sprites, currentZone, zoneStalls, horsesRef.current, vitals.current, selectedStallCode, L.realT);
   };
 
-  // Tìm ô chuồng được chọn và ngựa trong ô (nếu có)
-  const currentStall = zoneStalls.find((st) => st.code === selectedStallCode) ?? zoneStalls[0];
+  if (loadError) {
+    return (
+      <div className={t.stack}>
+        <p className={s.hint}>Không tải được sơ đồ chuồng: {loadError}</p>
+        <button type="button" className={`${s.btn} ${s.primary}`} onClick={() => void load()}>
+          Thử lại
+        </button>
+      </div>
+    );
+  }
+  if (!zones) return <p className={s.hint}>Đang tải sơ đồ chuồng…</p>;
+  if (!currentZone) return <p className={s.hint}>Chưa có khu chuồng nào đang hoạt động trên Web chính.</p>;
+
+  // Ô chuồng được chọn và ngựa trong ô (nếu có)
+  const currentStall = zoneStalls.find((st) => st.code === selectedStallCode) ?? null;
   const selectedHorse =
-    (currentStall?.horseId
-      ? horses.find((h) => h.id === currentStall.horseId) ?? horses.find((h) => currentStall.horseName && h.name.toLowerCase().includes(currentStall.horseName.toLowerCase()))
-      : null) ?? (selectedId ? horses.find((h) => h.id === selectedId) ?? null : null);
+    (currentStall?.horseId ? horses.find((h) => h.id === currentStall.horseId) : null) ?? (selectedId ? horses.find((h) => h.id === selectedId) ?? null : null);
   const sv = selectedHorse ? vitals.current.get(selectedHorse.id) : undefined;
 
   function report(kind: "COLIC" | "FEVER") {
@@ -119,40 +133,10 @@ export function StallTab({
     onIncident(selectedHorse.id);
   }
 
-  function handleSelectZone(zone: MockStallZone) {
+  function handleSelectZone(zone: StallZone) {
     setActiveZoneCode(zone.code);
-    const firstStall = allStalls.filter((st) => st.zoneCode === zone.code)[0];
-    if (firstStall) {
-      setSelectedStallCode(firstStall.code);
-      if (firstStall.horseId) {
-        onSelect(firstStall.horseId);
-      }
-    }
+    setSelectedStallCode(null);
   }
-
-  const updateStalls = (next: MockStall[]) => {
-    if (onStallsChange) {
-      onStallsChange(next);
-    } else {
-      setInternalStalls(next);
-    }
-  };
-
-  const handleAssignHorse = (stallCode: string, horse: HorseProfile) => {
-    try {
-      const updated = assignHorseToStall(allStalls, stallCode, horse);
-      updateStalls(updated);
-      setSelectedStallCode(stallCode);
-      onSelect(horse.id);
-    } catch (err: unknown) {
-      alert((err as Error).message);
-    }
-  };
-
-  const handleUnassignHorse = (stallCode: string) => {
-    const updated = unassignHorseFromStall(allStalls, stallCode);
-    updateStalls(updated);
-  };
 
   // Thống kê nhanh từng khu
   const occupiedCount = zoneStalls.filter((st) => st.status === "OCCUPIED").length;
@@ -162,27 +146,21 @@ export function StallTab({
 
   return (
     <div className={t.stack}>
-      {/* 1. Thanh chuyển đổi Phân khu Chuồng A, B, C */}
+      {/* 1. Thanh chuyển khu chuồng (theo dữ liệu thật) */}
       <div className={t.pillGroup} style={{ flexWrap: "wrap", justifyContent: "space-between" }}>
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-          {MOCK_STALL_ZONES.map((z) => {
-            const isActive = z.code === activeZoneCode;
-            return (
-              <button
-                key={z.code}
-                type="button"
-                className={`${s.btn} ${isActive ? s.primary : ""}`}
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: "15px",
-                  padding: "4px 12px",
-                }}
-                onClick={() => handleSelectZone(z)}
-              >
-                {z.code === "ZONE-A" ? "🚩 Khu A · Đua (8)" : z.code === "ZONE-B" ? "🏇 Khu B · Tập (8)" : "🏥 Khu C · Cách ly (4)"}
-              </button>
-            );
-          })}
+          {zones.map((z) => (
+            <button
+              key={z.code}
+              type="button"
+              className={`${s.btn} ${z.code === currentZone.code ? s.primary : ""}`}
+              style={{ fontFamily: "var(--font-display)", fontSize: "15px", padding: "4px 12px" }}
+              aria-pressed={z.code === currentZone.code}
+              onClick={() => handleSelectZone(z)}
+            >
+              {z.name} ({z.stalls.length})
+            </button>
+          ))}
         </div>
 
         <div style={{ display: "flex", gap: "8px", fontSize: "13px", alignItems: "center" }}>
@@ -197,7 +175,7 @@ export function StallTab({
       <section className={s.card} style={{ padding: "8px" }}>
         <div className={s.sceneFrame}>
           <PixelCanvas
-            aspect={activeZoneCode === "ZONE-C" ? 0.32 : 0.54}
+            aspect={Math.max(0.3, (currentZone.rows / currentZone.cols) * 1.08)}
             onFrame={onFrame}
             label={`Sơ đồ ${currentZone.name} gồm ${currentZone.rows} hàng nhân ${currentZone.cols} cột`}
             onPointer={(x, y, w, h) => {
@@ -206,17 +184,19 @@ export function StallTab({
               const hit = zoneStalls.find((st) => st.col === col && st.row === row);
               if (hit) {
                 setSelectedStallCode(hit.code);
-                if (hit.horseId) {
-                  onSelect(hit.horseId);
-                }
+                if (hit.horseId) onSelect(hit.horseId);
+                setDetailOpen(true);
               }
             }}
           />
         </div>
       </section>
 
-      {/* 3. Khối chi tiết ô chuồng được chọn (Tối giản & Động) */}
-      {currentStall && (
+      {!detailOpen && <p className={s.hint}>Chạm vào một ô chuồng để xem chi tiết.</p>}
+
+      {/* 3. Chi tiết ô chuồng được chọn: bảng nổi đè lên sơ đồ */}
+      {detailOpen && currentStall && (
+        <Popup title={`Ô chuồng ${currentStall.code}`} onClose={() => setDetailOpen(false)}>
         <section className={s.card} style={{ padding: "12px" }}>
           <div className={s.cardHead} style={{ paddingBottom: "8px" }}>
             <h3 className={s.cardTitle} style={{ margin: 0, fontSize: "16px" }}>
@@ -225,14 +205,14 @@ export function StallTab({
                 <span style={{ color: "#ffa726" }}>Đang Bảo Trì</span>
               ) : currentStall.status === "INACTIVE" ? (
                 <span style={{ color: "#b0bec5" }}>Ngừng Sử Dụng</span>
-              ) : selectedHorse ? (
-                <span className={t.horseName}>{selectedHorse.name}</span>
+              ) : currentStall.horseName ? (
+                <span className={t.horseName}>{currentStall.horseName}</span>
               ) : (
                 <span style={{ color: "#81c784" }}>Ô Chuồng Trống</span>
               )}
             </h3>
 
-            {selectedHorse && (
+            {selectedHorse && currentStall.horseId === selectedHorse.id && (
               <span className={t.stallInfo}>
                 <span className={s.badge} style={{ color: HEALTH_COLOR[selectedHorse.health] }}>
                   {LIFECYCLE_LABEL[selectedHorse.lifecycle]}
@@ -243,13 +223,13 @@ export function StallTab({
           </div>
 
           <div style={{ marginTop: "8px" }}>
-            {selectedHorse && sv ? (
+            {currentStall.horseId && selectedHorse && sv && currentStall.horseId === selectedHorse.id ? (
               <>
                 <div style={{ marginBottom: "8px", display: "flex", gap: "12px", flexWrap: "wrap", fontSize: "13px" }}>
-                  <span>Groom: <strong>{currentStall.assignedGroomName ?? "Đang phân công"}</strong></span>
+                  <span>Groom: <strong>{currentStall.assignedGroomName ?? "Chưa phân công"}</strong></span>
                   {selectedHorse.medicalLock && (
                     <span style={{ color: "#ff5252", fontWeight: 700 }}>
-                      🔒 Khóa y tế RULE-MED-01: Cấm chạy nặng!
+                      Đang khóa y tế: không chạy bài nặng.
                     </span>
                   )}
                 </div>
@@ -282,59 +262,31 @@ export function StallTab({
                   <button type="button" className={`${s.btn} ${s.primary}`} onClick={() => onOpenCard(selectedHorse.id)}>
                     Xem thẻ ngựa
                   </button>
-                  <button
-                    type="button"
-                    className={s.btn}
-                    style={{ background: "#f5ebd7", borderColor: "#8c7355" }}
-                    onClick={() => handleUnassignHorse(currentStall.code)}
-                    title="Đưa ngựa ra bãi thả, giải phóng ô chuồng"
-                  >
-                    Rút ngựa khỏi chuồng
-                  </button>
-                  <button type="button" className={s.danger} onClick={() => report("COLIC")}>
+                  <button type="button" className={s.danger} data-control onClick={() => report("COLIC")}>
                     {INCIDENT_LABEL.COLIC}
                   </button>
-                  <button type="button" className={s.btn} onClick={() => report("FEVER")}>
+                  <button type="button" className={s.btn} data-control onClick={() => report("FEVER")}>
                     {INCIDENT_LABEL.FEVER}
                   </button>
                 </div>
               </>
-            ) : currentStall.status === "AVAILABLE" ? (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", padding: "6px 0" }}>
-                <span style={{ color: "var(--muted)", fontSize: "14px" }}>
-                  Ô chuồng trống sạch sẽ, sẵn sàng đón cá thể mới.
-                </span>
-                <button
-                  type="button"
-                  className={`${s.btn} ${s.primary}`}
-                  style={{ padding: "6px 14px", fontWeight: 700 }}
-                  onClick={() => setAssigningStall(currentStall)}
-                >
-                  + Gán ngựa vào ô này
-                </button>
+            ) : currentStall.horseId ? (
+              // Ngựa có trong chuồng nhưng không nằm trong danh sách ngựa của phiên mô phỏng này
+              <div style={{ padding: "6px 0", fontSize: "14px" }}>
+                Groom: <strong>{currentStall.assignedGroomName ?? "Chưa phân công"}</strong>
               </div>
-            ) : currentStall.status === "MAINTENANCE" ? (
-              <div style={{ padding: "6px 0", color: "#d97706", fontSize: "14px" }}>
-                ⚒ {currentStall.notes ?? "Đang bảo trì định kỳ thay đệm lót và van nước."}
+            ) : currentStall.status === "AVAILABLE" ? (
+              <div style={{ padding: "6px 0", color: "var(--muted)", fontSize: "14px" }}>
+                Ô chuồng trống. Việc xếp ngựa vào chuồng làm trên Web chính.
               </div>
             ) : (
               <div style={{ padding: "6px 0", color: "#78909c", fontSize: "14px" }}>
-                ⊘ {currentStall.notes ?? "Ngừng sử dụng tạm thời."}
+                {currentStall.notes ?? (currentStall.status === "MAINTENANCE" ? "Đang bảo trì." : "Ngừng sử dụng.")}
               </div>
             )}
           </div>
         </section>
-      )}
-
-      {/* Modal Chọn & Gán Ngựa */}
-      {assigningStall && (
-        <AssignHorseModal
-          stall={assigningStall}
-          horses={horses}
-          stalls={allStalls}
-          onAssign={handleAssignHorse}
-          onClose={() => setAssigningStall(null)}
-        />
+        </Popup>
       )}
     </div>
   );

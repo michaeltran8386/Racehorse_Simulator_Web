@@ -250,7 +250,7 @@ export function RaceTab({ horses, sprites, speed, onIncident }: Props) {
           </div>
         </div>
         <div className={s.cardBody}>
-          <div className={s.row}>
+          <div className={s.row} data-control>
             <div className={s.field}>
               Mặt sân
               <div className={s.segmented} role="group" aria-label="Mặt sân">
@@ -286,7 +286,7 @@ export function RaceTab({ horses, sprites, speed, onIncident }: Props) {
         <div className={s.sceneFrame}>
           <PixelCanvas aspect={0.5} onFrame={onFrame} label="Trường đua 6 làn" />
         </div>
-        <div className={`${s.cardBody} ${t.incidentBar}`}>
+        <div className={`${s.cardBody} ${t.incidentBar}`} data-control>
           <span className={s.hint}>Giả lập sự cố trong cuộc đua — ngựa bị ghi DNF:</span>
           <select
             aria-label="Chọn làn"

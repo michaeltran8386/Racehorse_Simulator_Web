@@ -45,3 +45,7 @@ Desktop.ini
 # Temporary / obsolete experimental files
 manifest-*.json
 dashboard-preview.png
+NOW*.txt
+music/
+public/audio/theme-main.wav
+.impeccable/

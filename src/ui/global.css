@@ -80,3 +80,8 @@ code {
   scrollbar-width: thin;
   scrollbar-color: var(--wood-500) var(--parchment-2);
 }
+
+/* Khách chưa nhập PIN quản trị: ẩn mọi nút điều khiển (AdminLock.tsx). */
+[data-view-only="true"] [data-control] {
+  display: none !important;
+}
