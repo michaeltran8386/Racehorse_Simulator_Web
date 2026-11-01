@@ -23,7 +23,7 @@
 }
 
 .label {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   color: var(--ink);
 }
@@ -34,7 +34,7 @@
   border: 2px solid var(--ink);
   border-radius: 8px;
   background: #ffffff;
-  font-size: 14px;
+  font-size: var(--fs-sm);
   color: var(--ink);
   outline: none;
 }
@@ -50,7 +50,7 @@
   color: #a94442;
   border-radius: 8px;
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 
@@ -69,7 +69,7 @@
   color: var(--ink);
   border: 2px solid var(--ink);
   border-radius: var(--hud-pill-radius);
-  font-size: 14px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   cursor: pointer;
 }
@@ -80,7 +80,7 @@
   color: #ffffff;
   border: 2px solid var(--ink);
   border-radius: var(--hud-pill-radius);
-  font-size: 14px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 3px 0 var(--ink);

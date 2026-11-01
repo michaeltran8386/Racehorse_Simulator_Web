@@ -50,7 +50,7 @@
   border: var(--px) solid var(--ink);
   box-shadow: inset -3px -3px 0 var(--gold-dark), inset 3px 3px 0 var(--cream);
   font-family: var(--font-pixel);
-  font-size: 16px;
+  font-size: var(--fs-md);
 }
 
 .product {
@@ -163,7 +163,7 @@
 .speedBtn {
   min-width: 48px;
   font-family: var(--font-pixel);
-  font-size: 14px;
+  font-size: var(--fs-sm);
 }
 
 .speedBtn:hover,
@@ -405,7 +405,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--cream);
   margin-left: 8px;
 }
@@ -416,6 +416,6 @@
   color: var(--cream);
   border-radius: 4px;
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }

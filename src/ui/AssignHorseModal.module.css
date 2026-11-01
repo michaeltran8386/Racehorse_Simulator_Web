@@ -41,7 +41,7 @@
 
 .title {
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: var(--fs-md);
   margin: 0;
   color: #ffe082;
 }
@@ -50,7 +50,7 @@
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.4);
   color: var(--cream, #fdfbf7);
-  font-size: 14px;
+  font-size: var(--fs-sm);
   padding: 2px 8px;
   cursor: pointer;
   line-height: 1;
@@ -67,7 +67,7 @@
   padding: 8px 14px;
   background: var(--parchment-2, #f5ebd7);
   border-bottom: 1px solid var(--ink, #1f1a14);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .filterTabs {
@@ -79,7 +79,7 @@
   background: transparent;
   border: 1px solid var(--ink, #1f1a14);
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 
@@ -102,7 +102,7 @@
   padding: 24px;
   text-align: center;
   color: var(--muted, #665c54);
-  font-size: 14px;
+  font-size: var(--fs-sm);
 }
 
 .horseRow {
@@ -154,7 +154,7 @@
 
 .horseName {
   font-family: var(--font-display);
-  font-size: 15px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   color: var(--ink, #1f1a14);
   white-space: nowrap;
@@ -163,7 +163,7 @@
 }
 
 .horseSub {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--muted, #665c54);
   display: flex;
   gap: 6px;
@@ -174,7 +174,7 @@
 .lockBadge {
   color: #c62828;
   font-weight: 700;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   background: #ffcdd2;
   padding: 1px 4px;
   border: 1px solid #c62828;
@@ -186,7 +186,7 @@
   border: 1px solid var(--ink, #1f1a14);
   padding: 4px 10px;
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   cursor: pointer;
   box-shadow: 1px 1px 0 var(--ink, #1f1a14);
@@ -206,7 +206,7 @@
   background: #ffebee;
   border: 1px solid #ef5350;
   color: #b71c1c;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   line-height: 1.4;
   border-radius: 2px;
 }

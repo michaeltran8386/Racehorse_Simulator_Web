@@ -38,7 +38,7 @@
   bottom: 2px;
   transform: translateX(-50%);
   font-family: var(--font-pixel);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--cream);
   text-shadow: 1px 1px 0 var(--ink);
   pointer-events: none;

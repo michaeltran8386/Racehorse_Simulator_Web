@@ -84,7 +84,7 @@ export function GroomTab({ horses, onOpenHorseCard }: Props) {
               key={tab.key}
               type="button"
               className={`${s.btn} ${isActive ? s.primary : ""}`}
-              style={{ fontFamily: "var(--font-display)", fontSize: "14px", padding: "3px 10px" }}
+              style={{ fontFamily: "var(--font-display)", fontSize: "20px", padding: "6px 14px" }}
               aria-pressed={isActive}
               onClick={() => setFilter(tab.key)}
             >
@@ -153,7 +153,10 @@ export function GroomTab({ horses, onOpenHorseCard }: Props) {
               <span className={g.detailItemValue}>
                 {selectedUser.shiftsToday.length === 0
                   ? "Không có ca"
-                  : selectedUser.shiftsToday.map((sh) => `${sh.name} (${sh.startTime} - ${sh.endTime}) · ${sh.zoneName}`).join("; ")}
+                  : selectedUser.shiftsToday
+                      // Tên ca từ BE có thể đã kèm giờ, vd "Ca Sáng (05:00 - 13:00)": không ghi giờ lần nữa.
+                      .map((sh) => `${sh.name.includes(sh.startTime) ? sh.name : `${sh.name} (${sh.startTime} - ${sh.endTime})`} · ${sh.zoneName}`)
+                      .join("; ")}
               </span>
             </div>
           </div>

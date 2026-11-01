@@ -48,8 +48,10 @@
 
 .top {
   display: flex;
+  flex-wrap: wrap; /* màn hẹp: số lượng xuống dòng thay vì bóp tên vật tư */
+  align-items: baseline;
   justify-content: space-between;
-  gap: var(--sp-2);
+  gap: 2px var(--sp-2);
 }
 
 .name {

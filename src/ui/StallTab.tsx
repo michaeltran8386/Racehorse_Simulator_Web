@@ -154,7 +154,7 @@ export function StallTab({ horses, sprites, speed, selectedId, onSelect, onIncid
               key={z.code}
               type="button"
               className={`${s.btn} ${z.code === currentZone.code ? s.primary : ""}`}
-              style={{ fontFamily: "var(--font-display)", fontSize: "15px", padding: "4px 12px" }}
+              style={{ fontFamily: "var(--font-display)", fontSize: "var(--fs-sm)", padding: "4px 12px" }}
               aria-pressed={z.code === currentZone.code}
               onClick={() => handleSelectZone(z)}
             >
@@ -163,7 +163,7 @@ export function StallTab({ horses, sprites, speed, selectedId, onSelect, onIncid
           ))}
         </div>
 
-        <div style={{ display: "flex", gap: "8px", fontSize: "13px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "8px", fontSize: "var(--fs-sm)", alignItems: "center" }}>
           <span>Ở: <strong>{occupiedCount}</strong></span> ·
           <span>Trống: <strong>{availableCount}</strong></span>
           {maintenanceCount > 0 && <span> · <strong style={{ color: "#d97706" }}>Bảo trì: {maintenanceCount}</strong></span>}
@@ -199,7 +199,7 @@ export function StallTab({ horses, sprites, speed, selectedId, onSelect, onIncid
         <Popup title={`Ô chuồng ${currentStall.code}`} onClose={() => setDetailOpen(false)}>
         <section className={s.card} style={{ padding: "12px" }}>
           <div className={s.cardHead} style={{ paddingBottom: "8px" }}>
-            <h3 className={s.cardTitle} style={{ margin: 0, fontSize: "16px" }}>
+            <h3 className={s.cardTitle} style={{ margin: 0, fontSize: "var(--fs-md)" }}>
               Ô Chuồng <span style={{ color: "#ffe082" }}>{currentStall.code}</span> ·{" "}
               {currentStall.status === "MAINTENANCE" ? (
                 <span style={{ color: "#ffa726" }}>Đang Bảo Trì</span>
@@ -225,7 +225,7 @@ export function StallTab({ horses, sprites, speed, selectedId, onSelect, onIncid
           <div style={{ marginTop: "8px" }}>
             {currentStall.horseId && selectedHorse && sv && currentStall.horseId === selectedHorse.id ? (
               <>
-                <div style={{ marginBottom: "8px", display: "flex", gap: "12px", flexWrap: "wrap", fontSize: "13px" }}>
+                <div style={{ marginBottom: "8px", display: "flex", gap: "12px", flexWrap: "wrap", fontSize: "var(--fs-sm)" }}>
                   <span>Groom: <strong>{currentStall.assignedGroomName ?? "Chưa phân công"}</strong></span>
                   {selectedHorse.medicalLock && (
                     <span style={{ color: "#ff5252", fontWeight: 700 }}>
@@ -272,15 +272,15 @@ export function StallTab({ horses, sprites, speed, selectedId, onSelect, onIncid
               </>
             ) : currentStall.horseId ? (
               // Ngựa có trong chuồng nhưng không nằm trong danh sách ngựa của phiên mô phỏng này
-              <div style={{ padding: "6px 0", fontSize: "14px" }}>
+              <div style={{ padding: "6px 0", fontSize: "var(--fs-sm)" }}>
                 Groom: <strong>{currentStall.assignedGroomName ?? "Chưa phân công"}</strong>
               </div>
             ) : currentStall.status === "AVAILABLE" ? (
-              <div style={{ padding: "6px 0", color: "var(--muted)", fontSize: "14px" }}>
+              <div style={{ padding: "6px 0", color: "var(--muted)", fontSize: "var(--fs-sm)" }}>
                 Ô chuồng trống. Việc xếp ngựa vào chuồng làm trên Web chính.
               </div>
             ) : (
-              <div style={{ padding: "6px 0", color: "#78909c", fontSize: "14px" }}>
+              <div style={{ padding: "6px 0", color: "#78909c", fontSize: "var(--fs-sm)" }}>
                 {currentStall.notes ?? (currentStall.status === "MAINTENANCE" ? "Đang bảo trì." : "Ngừng sử dụng.")}
               </div>
             )}

@@ -81,20 +81,20 @@ export function VetZone({ horses, sprites, reported, onOpenCard, sessionId, targ
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.75rem", margin: "1rem 0" }}>
               <div style={{ background: "var(--parchment-2)", padding: "0.5rem 0.75rem", borderRadius: "4px" }}>
-                <span style={{ fontSize: "12px", color: "var(--ink-muted)", display: "block" }}>Thân nhiệt</span>
-                <strong style={{ fontSize: "16px" }}>{(37.7 + (1 - targetHorse.fitness) * 2).toFixed(1)} °C</strong>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--ink-muted)", display: "block" }}>Thân nhiệt</span>
+                <strong style={{ fontSize: "var(--fs-md)" }}>{(37.7 + (1 - targetHorse.fitness) * 2).toFixed(1)} °C</strong>
               </div>
               <div style={{ background: "var(--parchment-2)", padding: "0.5rem 0.75rem", borderRadius: "4px" }}>
-                <span style={{ fontSize: "12px", color: "var(--ink-muted)", display: "block" }}>Nhịp tim tĩnh</span>
-                <strong style={{ fontSize: "16px" }}>{Math.round(targetHorse.hrRest)} BPM</strong>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--ink-muted)", display: "block" }}>Nhịp tim tĩnh</span>
+                <strong style={{ fontSize: "var(--fs-md)" }}>{Math.round(targetHorse.hrRest)} BPM</strong>
               </div>
               <div style={{ background: "var(--parchment-2)", padding: "0.5rem 0.75rem", borderRadius: "4px" }}>
-                <span style={{ fontSize: "12px", color: "var(--ink-muted)", display: "block" }}>Nhịp thở</span>
-                <strong style={{ fontSize: "16px" }}>{Math.round(10 + (1 - targetHorse.fitness) * 12)} lần/phút</strong>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--ink-muted)", display: "block" }}>Nhịp thở</span>
+                <strong style={{ fontSize: "var(--fs-md)" }}>{Math.round(10 + (1 - targetHorse.fitness) * 12)} lần/phút</strong>
               </div>
               <div style={{ background: "var(--parchment-2)", padding: "0.5rem 0.75rem", borderRadius: "4px" }}>
-                <span style={{ fontSize: "12px", color: "var(--ink-muted)", display: "block" }}>Cân nặng</span>
-                <strong style={{ fontSize: "16px" }}>{targetHorse.weightKg ? `${targetHorse.weightKg} kg` : "Chưa có dữ liệu"}</strong>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--ink-muted)", display: "block" }}>Cân nặng</span>
+                <strong style={{ fontSize: "var(--fs-md)" }}>{targetHorse.weightKg ? `${targetHorse.weightKg} kg` : "Chưa có dữ liệu"}</strong>
               </div>
             </div>
 

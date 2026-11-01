@@ -43,7 +43,7 @@
 
 .subtitle {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: rgba(60, 42, 33, 0.7);
 }
 
@@ -53,7 +53,7 @@
   color: #a94442;
   border-radius: 8px;
   padding: 10px 14px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 
@@ -70,7 +70,7 @@
 }
 
 .label {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   color: var(--ink);
 }
@@ -80,7 +80,7 @@
   border: 2px solid var(--ink);
   border-radius: 8px;
   background: #ffffff;
-  font-size: 14px;
+  font-size: var(--fs-sm);
   color: var(--ink);
   outline: none;
   transition: border-color 0.15s;
@@ -97,7 +97,7 @@
   color: #ffffff;
   border: 2px solid var(--ink);
   border-radius: var(--hud-pill-radius);
-  font-size: 15px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 0 var(--ink);

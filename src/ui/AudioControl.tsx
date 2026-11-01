@@ -70,14 +70,14 @@ export function AudioControl({ align = "right" }: { align?: "left" | "right" } =
             flexDirection: "column",
             gap: "12px",
             color: "var(--ink-primary, #eceff4)",
-            fontSize: "13px",
+            fontSize: "var(--fs-sm)",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-subtle, #3b4252)", paddingBottom: "6px" }}>
             <span style={{ fontWeight: 700, letterSpacing: "0.5px" }}>Âm Thanh TMEC</span>
             <button
               type="button"
-              style={{ background: "transparent", border: "none", color: "inherit", cursor: "pointer", fontSize: "14px" }}
+              style={{ background: "transparent", border: "none", color: "inherit", cursor: "pointer", fontSize: "var(--fs-sm)" }}
               onClick={() => {
                 playSfx("ui-close");
                 setOpen(false);
@@ -101,7 +101,7 @@ export function AudioControl({ align = "right" }: { align?: "left" | "right" } =
                 />
                 <span>Nhạc nền (BGM)</span>
               </label>
-              <span style={{ color: "var(--ink-muted, #9aa2b1)", fontSize: "11px" }}>
+              <span style={{ color: "var(--ink-muted, #9aa2b1)", fontSize: "var(--fs-xs)" }}>
                 {musicEnabled ? `${Math.round(musicVolume * 100)}%` : "Tắt"}
               </span>
             </div>
@@ -131,7 +131,7 @@ export function AudioControl({ align = "right" }: { align?: "left" | "right" } =
                 />
                 <span>Hiệu ứng (SFX)</span>
               </label>
-              <span style={{ color: "var(--ink-muted, #9aa2b1)", fontSize: "11px" }}>
+              <span style={{ color: "var(--ink-muted, #9aa2b1)", fontSize: "var(--fs-xs)" }}>
                 {sfxEnabled ? `${Math.round(sfxVolume * 100)}%` : "Tắt"}
               </span>
             </div>

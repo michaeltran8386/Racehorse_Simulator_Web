@@ -227,7 +227,7 @@
   background: var(--ink);
   color: var(--gold);
   font-family: var(--font-pixel);
-  font-size: 14px;
+  font-size: var(--fs-sm);
 }
 
 .noticeDanger {

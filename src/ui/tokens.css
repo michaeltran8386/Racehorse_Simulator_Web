@@ -90,11 +90,12 @@
   --font-pixel: "Silkscreen", "VT323", monospace;
   --font-mono: "VT323", ui-monospace, monospace;
 
-  --fs-xs: 16px;
-  --fs-sm: 18px;
-  --fs-md: 20px;
-  --fs-lg: 24px;
-  --fs-xl: 30px;
+  /* VT323 trông nhỏ hơn cỡ thật: nâng thang chữ để popup dễ đọc. */
+  --fs-xs: 18px;
+  --fs-sm: 20px;
+  --fs-md: 22px;
+  --fs-lg: 26px;
+  --fs-xl: 32px;
 
   --tracking-wide: 0.08em;
 
