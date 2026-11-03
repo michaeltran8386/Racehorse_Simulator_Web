@@ -6,6 +6,7 @@ export interface CreateHorseInput {
   dob: string;
   gender: string;
   color: string;
+  weightKg: number;
   microchip?: string;
   stallId?: string;
 }

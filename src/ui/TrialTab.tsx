@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { publish } from "../sim/bus";
 import {
+  completeCooldown,
+  COOLDOWN_S,
   createRun,
   createSimulationTicker,
   formatMicrochip,
@@ -49,9 +51,11 @@ interface Props {
     condition?: TrackCondition;
     obstacles?: Obstacle[];
   };
+  /** Web chính mở với autorun=1: chạy engine ngay, không hoạt ảnh. */
+  autoRun?: boolean;
 }
 
-export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initialWorkout }: Props) {
+export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initialWorkout, autoRun }: Props) {
   const [surface, setSurface] = useState<Surface>(initialWorkout?.surface || "GRASS");
   const [distance, setDistance] = useState(initialWorkout?.distance || 1000);
   const [intensity, setIntensity] = useState<Intensity>(initialWorkout?.intensity || "MODERATE");
@@ -131,6 +135,12 @@ export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initial
 
   function stop() {
     const run = runRef.current;
+    // Đã về đích: không coi là sự cố, tua nốt phần hồi phục rồi chốt kết quả.
+    if (run && !anim.current.finishedSent && run.status === "COOLDOWN") {
+      completeCooldown(run, horseRef.current);
+      finish(run);
+      return;
+    }
     if (run && !anim.current.finishedSent) {
       run.status = "ABORTED_INJURY";
       run.v = 0;
@@ -165,6 +175,20 @@ export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initial
     setHud(snapshotOf(run));
   }
 
+  // Web chính bấm "Tải chỉ số từ Simulator": chạy engine thật không hoạt ảnh, gồm 10 phút hồi phục, rồi gửi kết quả.
+  // Ref chặn chạy lại khi StrictMode gọi effect hai lần.
+  const autoRanRef = useRef(false);
+  useEffect(() => {
+    if (!autoRun || autoRanRef.current || heavyBlocked) return;
+    autoRanRef.current = true;
+    start();
+    const run = runRef.current;
+    if (!run) return;
+    while (run.status === "RUNNING" && run.t < 2000) stepRun(run, horseRef.current, SUBSTEP);
+    completeCooldown(run, horseRef.current);
+    finish(run);
+  }, [autoRun, heavyBlocked]);
+
   const onFrame = (ctx: CanvasRenderingContext2D, w: number, h: number, dtReal: number) => {
     const a = anim.current;
     const run = runRef.current;
@@ -185,15 +209,9 @@ export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initial
           series.current = [...series.current, { speedKmh: run.v * 3.6, hr: run.hr }].slice(-CHART_POINTS);
           a.nextChartT += 1;
         }
-        const reachedTarget = run.distance >= (run.targetM ?? distance);
         const injuredStopped = run.status === "ABORTED_INJURY" && run.v < 0.1;
-        if (run.status === "FINISHED" || reachedTarget || injuredStopped) {
-          if (reachedTarget && run.status !== "ABORTED_INJURY") {
-            run.status = "FINISHED";
-            run.distance = run.targetM ?? distance;
-            run.v = 0;
-            run.pace = 0;
-          }
+        // Qua vạch đích engine chuyển sang COOLDOWN; chỉ chốt khi đủ 10 phút đi bộ để có nhịp tim hồi phục.
+        if (run.status === "FINISHED" || injuredStopped) {
           finish(run);
           break;
         }
@@ -242,7 +260,7 @@ export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initial
   };
 
   const cooldownLeft = hud && phase === "COOLDOWN" && runRef.current?.finishTime != null
-    ? Math.max(0, 300 - (hud.t - runRef.current.finishTime))
+    ? Math.max(0, COOLDOWN_S - (hud.t - runRef.current.finishTime))
     : null;
 
   return (
@@ -266,6 +284,11 @@ export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initial
             <div style={{ fontSize: "0.82rem", color: "var(--muted)", margin: "0 0 10px 0" }} data-testid="prescribed-workout-notice">
               🔒 Cấu hình bài tập chỉ định từ Hệ thống Web (Bất biến: {SURFACE_LABEL[surface]} · {distance}m · {INTENSITY_LABEL[intensity]})
             </div>
+          )}
+          {autoRun && (phase === "DONE" || phase === "ABORTED") && (
+            <p className={s.notice} data-testid="autorun-done-notice">
+              Đã chạy xong cả 10 phút hồi phục và gửi kết quả về Web chính. Quay lại tab Web chính để xem chỉ số.
+            </p>
           )}
           <div className={s.row} data-control>
             <div className={s.field}>
@@ -322,7 +345,7 @@ export function TrialTab({ horse, sprites, speed, onIncident, sessionId, initial
             <div className={s.spacer} />
             {busy ? (
               <button type="button" className={s.btn} onClick={stop}>
-                Dừng phiên
+                {phase === "COOLDOWN" ? "Bỏ qua hồi phục, lấy kết quả" : "Dừng phiên"}
               </button>
             ) : (
               <button type="button" className={s.primary} onClick={start} disabled={heavyBlocked}>
@@ -408,7 +431,7 @@ function PhasePill({ phase, cooldownLeft }: { phase: Phase; cooldownLeft: number
 }
 
 function ResultCard({ summary: r, aborted }: { summary: RunSummary; aborted: boolean }) {
-  const rec = r.hrRecovery5m;
+  const rec = r.hrRecovery10m;
   const recovery =
     rec === null ? null : rec <= 85 ? ["Xuất sắc", s.noticeOk] : rec > 110 ? ["Cảnh báo tim mạch", s.noticeDanger] : ["Bình thường", s.notice];
   return (
@@ -423,7 +446,7 @@ function ResultCard({ summary: r, aborted }: { summary: RunSummary; aborted: boo
             <tr><th>Quãng đường hoàn thành</th><td className={s.num}>{r.distanceCompletedM} m</td><th>Thời gian</th><td className={s.num}>{formatTime(r.durationS)}</td></tr>
             <tr><th>Vận tốc TB / tối đa</th><td className={s.num}>{r.avgSpeedKmh} / {r.topSpeedKmh} km/h</td><th>Nhịp tim TB / đỉnh</th><td className={s.num}>{r.avgHr} / {r.peakHr} bpm</td></tr>
             <tr><th>Sải TB / tần số TB</th><td className={s.num}>{r.avgStrideLenM} m · {r.avgStrideFreqHz} Hz</td><th>Calo tiêu hao</th><td className={s.num}>{r.kcal} kcal</td></tr>
-            <tr><th>Thân nhiệt cuối</th><td className={s.num}>{r.finalTempC} °C</td><th>HR sau 5 phút</th><td className={s.num}>{rec ?? "—"} bpm</td></tr>
+            <tr><th>Thân nhiệt cuối</th><td className={s.num}>{r.finalTempC} °C</td><th>Nhịp tim sau 10 phút</th><td className={s.num}>{rec ?? "—"} bpm</td></tr>
             <tr><th>Tình trạng sân</th><td className={s.num}>{CONDITION_LABEL[r.condition]}</td><th>Chướng ngại đã vượt</th><td className={s.num}>{r.obstaclesCleared} / {r.obstaclesTotal}</td></tr>
           </tbody>
         </table>

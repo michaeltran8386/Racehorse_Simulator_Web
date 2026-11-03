@@ -12,7 +12,11 @@ function Root() {
 
   // Đồng bộ tức thời nếu có type=EXAM trên URL; hoặc kiểm tra context nếu có sessionId
   const [bypassIntro, setBypassIntro] = useState<boolean>(
-    () => typeParam === "EXAM" || query.get("bypassIntro") === "true" || query.get("bypassIntro") === "1",
+    () =>
+      typeParam === "EXAM" ||
+      query.get("autorun") === "1" ||
+      query.get("bypassIntro") === "true" ||
+      query.get("bypassIntro") === "1",
   );
 
   useEffect(() => {

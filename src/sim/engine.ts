@@ -110,7 +110,6 @@ export interface RunState {
   topV: number;
   finishTime: number | null;
   hrRecovery10m: number | null;
-  hrRecovery5m: number | null;
   sums: { hr: number; stride: number; freq: number; n: number };
   rng: number;
   condition: TrackCondition;
@@ -139,7 +138,6 @@ export interface RunSummary {
   kcal: number;
   finalTempC: number;
   hrRecovery10m: number | null;
-  hrRecovery5m: number | null;
   incident: Incident | null;
   condition: TrackCondition;
   obstaclesCleared: number;
@@ -181,7 +179,6 @@ export function createRun(horse: HorseProfile, cfg: RunConfig, seed: number): Ru
     topV: 0,
     finishTime: null,
     hrRecovery10m: null,
-    hrRecovery5m: null,
     sums: { hr: 0, stride: 0, freq: 0, n: 0 },
     rng: seed | 0,
     condition: cfg.condition ?? "GOOD",
@@ -310,14 +307,17 @@ export function stepRun(run: RunState, horse: HorseProfile, dt: number, paceOver
     run.status = "COOLDOWN";
   } else if (run.status === "COOLDOWN" && run.finishTime !== null) {
     const elapsedCooldown = run.t - run.finishTime;
-    if (run.hrRecovery5m === null && elapsedCooldown >= 300) {
-      run.hrRecovery5m = Math.round(run.hr);
-    }
     if (run.hrRecovery10m === null && elapsedCooldown >= COOLDOWN_S) {
       run.hrRecovery10m = Math.round(run.hr);
       run.status = "FINISHED";
     }
   }
+}
+
+/** Tua nhanh phần đi bộ hồi phục còn lại bằng chính stepRun: có hrRecovery10m mà không phải chờ 10 phút. */
+export function completeCooldown(run: RunState, horse: HorseProfile, dt = 0.05): void {
+  const stopAt = run.t + COOLDOWN_S + 60; // chặn vòng lặp vô hạn nếu số đo hỏng (NaN)
+  while (run.status === "COOLDOWN" && run.t < stopAt) stepRun(run, horse, dt);
 }
 
 /** Nghỉ tại chuồng (SIM-02): thể lực +2%/phút, HR quanh mức nghỉ, thân nhiệt về 37.8 °C. */
@@ -364,7 +364,6 @@ export function summarize(run: RunState): RunSummary {
     kcal: r1(run.kcal),
     finalTempC: r1(run.tempC),
     hrRecovery10m: run.hrRecovery10m,
-    hrRecovery5m: run.hrRecovery5m,
     incident: run.incident,
     condition: run.condition,
     obstaclesCleared: run.cleared,
