@@ -24,6 +24,13 @@ export function interpolateCamera(from: Point, to: Point, progress: number, redu
 
 export const MAX_ZOOM = 3;
 
+const ZOOM_LEVELS = [0.5, 0.75, 1, 1.5, 2, MAX_ZOOM];
+
+export function nextZoomLevel(zoom: number, direction: 1 | -1): number {
+  const levels = direction > 0 ? ZOOM_LEVELS : [...ZOOM_LEVELS].reverse();
+  return levels.find((level) => direction > 0 ? level > zoom : level < zoom) ?? zoom;
+}
+
 /** Mức phóng nhỏ nhất để bản đồ luôn phủ kín khung (không lộ viền trống). */
 export function minZoom(screen: Size, world: Size): number {
   return Math.max(screen.width / world.width, screen.height / world.height);

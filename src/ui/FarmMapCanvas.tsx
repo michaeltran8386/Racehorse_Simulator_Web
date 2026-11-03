@@ -10,7 +10,7 @@ import { audio } from "../audio/audioManager";
 import { SUPPLY_ICON } from "./supplyIcons";
 import type { HorseProfile } from "../sim/engine";
 import type { StableHorseAssignment } from "../hub/farmPopulation";
-import { cameraAt, clampCamera, MAX_ZOOM, minZoom, viewCenter, zoomAt, type Size } from "../hub/camera";
+import { cameraAt, clampCamera, MAX_ZOOM, minZoom, nextZoomLevel, viewCenter, zoomAt, type Size } from "../hub/camera";
 import { FARM_ANCHORS, FARM_INTERACTIVE_OBJECTS, FARM_WORLD, type FarmObject, type Point } from "../hub/farmLayout";
 import { alphaMaskFromImage, hitTestObjects, type AlphaMask } from "../hub/pixelHitTest";
 import { useFarmCamera } from "../hub/useFarmCamera";
@@ -22,9 +22,7 @@ import type { Sprites } from "../render/sprites";
 import c from "./FarmHub.module.css";
 
 export type TimeOfDay = "DAY" | "NIGHT";
-// shortcut: zoom lẻ (1.25…) làm pixel to nhỏ không đều; nếu thấy rõ thì đổi bước sang bội số nguyên
 const DEFAULT_ZOOM = 1.5;
-const ZOOM_STEP = 1.15; // mỗi nấc lăn
 
 interface Props {
   sprites: Sprites;
@@ -244,7 +242,7 @@ export function FarmMapCanvas({ sprites, tod, hoveredId, onHover, goTo, onEnter,
       stopMomentum();
       const rect = canvas.getBoundingClientRect();
       const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-      const next = zoomAt(cam, z, event.deltaY < 0 ? z * ZOOM_STEP : z / ZOOM_STEP, anchor, size, FARM_WORLD);
+      const next = zoomAt(cam, z, nextZoomLevel(z, event.deltaY < 0 ? 1 : -1), anchor, size, FARM_WORLD);
       setZoom(next.zoom);
       setCamera(next.camera);
     };
@@ -266,7 +264,34 @@ export function FarmMapCanvas({ sprites, tod, hoveredId, onHover, goTo, onEnter,
       ref={canvasRef}
       className={c.mapCanvas}
       tabIndex={0}
-      aria-label="Bản đồ trang trại. Bấm giữ và kéo để di chuyển, lăn chuột để phóng xa hoặc gần; bấm vào công trình để vào khu."
+      aria-label="Bản đồ trang trại. Kéo hoặc dùng phím mũi tên để di chuyển. Lăn chuột hoặc dùng phím cộng và trừ để thu phóng."
+      onKeyDown={(event) => {
+        const { camera: cam, zoom: z, screenSize: size, locked: busy } = live.current;
+        if (busy || event.ctrlKey || event.metaKey || event.altKey) return;
+        const viewport = { width: size.width / z, height: size.height / z };
+        const step = 48 / z;
+        const direction = event.key === "+" || event.key === "=" ? 1 : event.key === "-" ? -1 : null;
+        if (direction !== null) {
+          event.preventDefault();
+          stopMomentum();
+          const anchor = { x: size.width / 2, y: size.height / 2 };
+          const next = zoomAt(cam, z, nextZoomLevel(z, direction), anchor, size, FARM_WORLD);
+          setZoom(next.zoom);
+          setCamera(next.camera);
+        } else {
+          const movement = {
+            ArrowLeft: { x: -step, y: 0 },
+            ArrowRight: { x: step, y: 0 },
+            ArrowUp: { x: 0, y: -step },
+            ArrowDown: { x: 0, y: step },
+          };
+          const delta = movement[event.key as keyof typeof movement];
+          if (!delta) return;
+          event.preventDefault();
+          stopMomentum();
+          setCamera(clampCamera({ x: cam.x + delta.x, y: cam.y + delta.y }, viewport, FARM_WORLD));
+        }
+      }}
       data-locked={locked}
       data-hover={!!hoveredId || hoverHorse >= 0}
       onPointerDown={(event) => {

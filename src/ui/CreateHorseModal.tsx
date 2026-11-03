@@ -21,6 +21,7 @@ export function CreateHorseModal({ onClose, onCreated, totalHorsesCount }: Props
   });
   const [gender, setGender] = useState('STALLION');
   const [color, setColor] = useState('Bay');
+  const [weightKg, setWeightKg] = useState('');
   const [microchip, setMicrochip] = useState('');
 
   const [breeds, setBreeds] = useState<string[]>(['Thoroughbred', 'Arabian', 'Quarter Horse']);
@@ -58,6 +59,7 @@ export function CreateHorseModal({ onClose, onCreated, totalHorsesCount }: Props
         dob: new Date(dob).toISOString(),
         gender,
         color,
+        weightKg: Number(weightKg),
       };
       if (microchip.trim()) payload.microchip = microchip.trim();
 
@@ -77,6 +79,10 @@ export function CreateHorseModal({ onClose, onCreated, totalHorsesCount }: Props
       {error && <div className={c.errorBanner}>{error}</div>}
 
       <form className={c.form} onSubmit={handleSubmit}>
+        <div className={c.field}>
+          <label className={c.label} htmlFor="ch-weight">Cân nặng (kg) *</label>
+          <input id="ch-weight" className={c.input} type="number" min="0.01" step="any" required value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
+        </div>
         <div className={c.field}>
           <label className={c.label} htmlFor="ch-name">
             Tên ngựa *

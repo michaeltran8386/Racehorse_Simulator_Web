@@ -56,6 +56,8 @@ export function App() {
 
   const query = new URLSearchParams(window.location.search);
   const sessionId = query.get("sessionId")?.trim() || query.get("session_id")?.trim() || null;
+  // Chỉ chạy ẩn với phiên do Web chính cấp.
+  const autoRun = Boolean(sessionId) && query.get("autorun") === "1";
 
   const [canControl, setCanControl] = useState(() =>
     initialUnlocked(typeof localStorage === "undefined" ? null : localStorage, sessionId),
@@ -553,6 +555,7 @@ export function App() {
                 speed={speed}
                 onIncident={markReported}
                 sessionId={sessionId ?? undefined}
+                autoRun={autoRun && simulationContext?.type === "WORKOUT"}
                 initialWorkout={
                   simulationContext?.type === "WORKOUT"
                     ? workoutToTrialSetup(simulationContext.workout)
