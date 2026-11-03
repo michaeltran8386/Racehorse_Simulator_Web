@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cameraAt, cameraForFocus, clampCamera, classifyPointerGesture, decayVelocity, interpolateCamera, MAX_ZOOM, MIN_SPEED, viewCenter, zoomAt } from "./camera.ts";
+import { cameraAt, cameraForFocus, clampCamera, classifyPointerGesture, decayVelocity, interpolateCamera, MAX_ZOOM, MIN_SPEED, nextZoomLevel, viewCenter, zoomAt } from "./camera.ts";
 
 const world = { width: 2048, height: 1536 };
 
@@ -35,6 +35,13 @@ test("zoomAt keeps the world point under the cursor and clamps zoom", () => {
   assert.equal(r.camera.y + anchor.y / r.zoom, 100 + anchor.y / 2);
   assert.equal(zoomAt({ x: 0, y: 0 }, 2, 99, anchor, screen, w).zoom, MAX_ZOOM);
   assert.equal(zoomAt({ x: 0, y: 0 }, 2, 0.1, anchor, screen, w).zoom, 600 / 768); // vừa khít chiều cao
+});
+
+test("wheel and keyboard use the same discrete zoom levels", () => {
+  assert.equal(nextZoomLevel(1.5, 1), 2);
+  assert.equal(nextZoomLevel(1.5, -1), 1);
+  assert.equal(nextZoomLevel(1.15, -1), 1);
+  assert.equal(nextZoomLevel(MAX_ZOOM, 1), MAX_ZOOM);
 });
 
 test("cameraAt centres a world point and viewCenter reads it back", () => {

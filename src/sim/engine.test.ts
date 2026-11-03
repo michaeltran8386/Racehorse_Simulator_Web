@@ -13,6 +13,7 @@ import {
   summarize,
   triggerIncident,
   COOLDOWN_S,
+  completeCooldown,
   TICK_RATE_HZ,
   createSimulationTicker,
   runSimulationWithTicker,
@@ -56,7 +57,7 @@ test("bài nặng 1600 m sân cỏ nằm trong dải sinh lý", () => {
   assert.ok(s.avgStrideLenM > 5.5 && s.avgStrideLenM < 7.6, `sải ${s.avgStrideLenM} m`);
   assert.ok(s.avgStrideFreqHz > 2.0 && s.avgStrideFreqHz < 2.5, `tần số ${s.avgStrideFreqHz} Hz`);
   assert.ok(s.finalTempC > 38 && s.finalTempC < 40.5, `thân nhiệt ${s.finalTempC}`);
-  assert.ok(s.hrRecovery5m !== null && s.hrRecovery5m > 55 && s.hrRecovery5m < 120, `HR hồi phục ${s.hrRecovery5m}`);
+  assert.ok(s.hrRecovery10m !== null && s.hrRecovery10m > 30 && s.hrRecovery10m < 120, `HR hồi phục ${s.hrRecovery10m}`);
 });
 
 test("bài nhẹ giữ nhịp tim ở mức nước kiệu", () => {
@@ -117,6 +118,18 @@ test("chướng ngại & sân lầy làm chậm, đếm đủ số lần vượt
   assert.ok(maxLift > 0.9, `nhảy cao ${maxLift}`);
 });
 
+test("tua nhanh hồi phục cho cùng nhịp tim phút 10 như chạy đủ cooldown", () => {
+  const full = runToEnd("GRASS", 1200, INTENSITY_PACE.MODERATE, 7);
+  const fast = createRun(horse, { surface: "GRASS", distanceM: 1200, pace: INTENSITY_PACE.MODERATE }, 7);
+  while (fast.status === "RUNNING" && fast.t < 2000) stepRun(fast, horse, 0.05);
+  assert.equal(fast.status, "COOLDOWN");
+  completeCooldown(fast, horse);
+  assert.equal(fast.status, "FINISHED");
+  assert.ok(fast.hrRecovery10m !== null);
+  assert.equal(fast.hrRecovery10m, full.hrRecovery10m);
+  assert.ok(fast.t - (fast.finishTime ?? 0) >= COOLDOWN_S);
+});
+
 test("mã chip 15 số được chia nhóm 3 số cho dễ đọc", () => {
   assert.equal(formatMicrochip("985141000000001"), "985 141 000 000 001");
   assert.equal(formatMicrochip("9851"), "985 1");
@@ -175,51 +188,19 @@ test("ticker: runSimulationWithTicker chạy toàn bộ bài tập với tần s
   assert.equal(res.run.status, "FINISHED");
 });
 
-test("cooldown: hrRecovery5m được ghi nhận tại 300s và hrRecovery10m tại 600s, không gán chéo trong summarize()", () => {
-  assert.equal(COOLDOWN_S, 600, "Thời gian hạ nhiệt chuẩn hóa là 600s (10 phút)");
+test("cooldown records the recovery heart rate only after ten simulated minutes", () => {
+  assert.equal(COOLDOWN_S, 600);
   const run = createRun(horse, { surface: "GRASS", distanceM: 1600, pace: INTENSITY_PACE.HEAVY }, 1);
-  // Chạy cho đến khi qua vạch đích vào COOLDOWN
-  while (run.status === "RUNNING" && run.t < 500) {
-    stepRun(run, horse, 0.05);
-  }
+  while (run.status === "RUNNING" && run.t < 500) stepRun(run, horse, 0.05);
   assert.equal(run.status, "COOLDOWN");
   assert.ok(run.finishTime !== null);
-
-  // Trước 300s: cả 5m và 10m đều là null
-  while (run.t - run.finishTime < 299) {
-    stepRun(run, horse, 0.05);
-  }
-  assert.equal(run.hrRecovery5m, null, "Trước 300s, hrRecovery5m phải là null");
-  assert.equal(run.hrRecovery10m, null, "Trước 600s, hrRecovery10m phải là null");
-
-  // Vừa qua mốc 300s (5 phút hạ nhiệt): hrRecovery5m được ghi nhận, hrRecovery10m vẫn là null
-  while (run.t - run.finishTime < 301) {
-    stepRun(run, horse, 0.05);
-  }
-  assert.ok(run.hrRecovery5m !== null, "Tại 300s, hrRecovery5m phải được ghi nhận");
-  assert.equal(run.hrRecovery10m, null, "Tại 300s, hrRecovery10m vẫn phải là null");
-  const captured5m = run.hrRecovery5m;
-
-  // Tiếp tục đến trước 600s: hrRecovery5m giữ nguyên giá trị đã ghi nhận, hrRecovery10m vẫn là null
-  while (run.t - run.finishTime < 599) {
-    stepRun(run, horse, 0.05);
-  }
-  assert.equal(run.hrRecovery5m, captured5m, "hrRecovery5m không bị gán lại trước 600s");
-  assert.equal(run.hrRecovery10m, null, "Trước 600s, hrRecovery10m vẫn phải là null");
-
-  // Vừa qua mốc 600s (10 phút hạ nhiệt): hrRecovery10m được ghi nhận và trạng thái chuyển sang FINISHED
-  while ((run.status as string) !== "FINISHED" && run.t < 2000) {
-    stepRun(run, horse, 0.05);
-  }
+  while (run.t - run.finishTime < 599) stepRun(run, horse, 0.05);
+  assert.equal(run.hrRecovery10m, null);
+  assert.equal(run.status, "COOLDOWN");
+  while ((run.status as string) !== "FINISHED" && run.t < 2000) stepRun(run, horse, 0.05);
   assert.equal(run.status, "FINISHED");
-  assert.ok(run.hrRecovery10m !== null, "Tại 600s, hrRecovery10m phải được ghi nhận");
-  assert.equal(run.hrRecovery5m, captured5m, "hrRecovery5m phải giữ nguyên giá trị đo lúc 300s, không bị gán đè lúc 600s");
-  assert.ok(run.hrRecovery10m <= run.hrRecovery5m, `HR 10m (${run.hrRecovery10m}) phải <= HR 5m (${run.hrRecovery5m})`);
-
-  // summarize() giữ nguyên cả 2 giá trị độc lập, không populate hrRecovery5m từ hrRecovery10m
-  const s = summarize(run);
-  assert.equal(s.hrRecovery5m, captured5m);
-  assert.equal(s.hrRecovery10m, run.hrRecovery10m);
+  assert.ok(run.hrRecovery10m !== null);
+  assert.equal(summarize(run).hrRecovery10m, run.hrRecovery10m);
 });
 
 test("chấn thương gãy chân hủy bài (ABORTED_INJURY) nhưng không bao giờ tự ý bật medicalLock của ngựa", () => {
