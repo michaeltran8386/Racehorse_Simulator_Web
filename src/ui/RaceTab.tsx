@@ -1,5 +1,5 @@
 // Trường đua 6 làn (SIM-05): chọn ngựa đủ điều kiện → mở cổng → bảng xếp hạng P1–P6 → kết quả chính thức.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { publish } from "../sim/bus";
 import {
   createRace,
@@ -14,8 +14,15 @@ import {
 } from "../sim/engine";
 import { blockReason, STRATEGY_LABEL } from "../sim/horses";
 import { incidentPacket, newSessionId, raceFinishedPacket, raceProgressPacket } from "../sim/packets";
+import {
+  resolveEventId,
+  useEventAcknowledged,
+  useTransportError,
+  useTransportState,
+} from "../sim/socketTransport";
 import { drawCountdown, drawCrowd, drawFinishFx, drawLaneTag, drawLeaderboard, drawRunner, drawStartGate, drawTrack, LANE_SILK } from "../render/scenes";
 import type { Sprites } from "../render/sprites";
+import type { SimulationContext } from "../api/simulatorApi.ts";
 import { PixelCanvas } from "./PixelCanvas";
 import { formatTime } from "./Telemetry";
 import { DISTANCES, SURFACE_LABEL } from "./TrialTab";
@@ -35,6 +42,8 @@ interface Props {
   sprites: Sprites;
   speed: number;
   onIncident: (horseId: string) => void;
+  simulationContext?: SimulationContext | null;
+  sessionId?: string | null;
 }
 
 interface Row {
@@ -49,7 +58,7 @@ interface Row {
   splits: number[];
 }
 
-export function RaceTab({ horses, sprites, speed, onIncident }: Props) {
+export function RaceTab({ horses, sprites, speed, onIncident, simulationContext, sessionId }: Props) {
   const eligible = horses.filter((h) => !blockReason(h));
   const [picked, setPicked] = useState<string[]>(() => eligible.slice(0, 6).map((h) => h.id));
   const [distance, setDistance] = useState(1200);
@@ -59,9 +68,33 @@ export function RaceTab({ horses, sprites, speed, onIncident }: Props) {
   const [incidentLane, setIncidentLane] = useState(1);
 
   const raceRef = useRef<Race | null>(null);
-  const sessionRef = useRef("");
+  const sessionRef = useRef(sessionId || "");
   const splits = useRef(new Map<number, number[]>());
   const loop = useRef(freshLoop(0));
+  const publishedFinishSessionsRef = useRef(new Set<string>());
+  const [finishEventId, setFinishEventId] = useState<string | null>(null);
+  const [reRunBlocked, setReRunBlocked] = useState(false);
+
+  const transportState = useTransportState();
+  const transportError = useTransportError();
+  const finishAcknowledged = useEventAcknowledged(finishEventId);
+
+  const isTournamentRace = simulationContext?.type === "RACE";
+  const tournamentName = isTournamentRace ? (simulationContext as any).tournamentName : "";
+
+  // Tự động nhận diện cự ly, mặt sân và danh sách ngựa từ phiên giải đua chính thức
+  useEffect(() => {
+    if (simulationContext?.type === "RACE") {
+      const raceCtx = simulationContext as any;
+      if (raceCtx.distanceMeters) setDistance(raceCtx.distanceMeters);
+      if (raceCtx.surface) setSurface(raceCtx.surface as Surface);
+      if (raceCtx.entries?.length) {
+        setPicked(raceCtx.entries.map((e: any) => e.horse.id));
+      }
+      if (sessionId) sessionRef.current = sessionId;
+      else if (raceCtx.sessionId) sessionRef.current = raceCtx.sessionId;
+    }
+  }, [simulationContext, sessionId]);
 
   const field = picked.map((id) => horses.find((h) => h.id === id)).filter((h): h is HorseProfile => !!h && !blockReason(h));
 
@@ -71,7 +104,9 @@ export function RaceTab({ horses, sprites, speed, onIncident }: Props) {
 
   function start() {
     if (field.length < 2) return;
-    sessionRef.current = newSessionId("RACE");
+    sessionRef.current = sessionId || sessionRef.current || newSessionId("RACE");
+    setFinishEventId(null);
+    setReRunBlocked(false);
     raceRef.current = createRace(field, distance, surface, (Date.now() & 0x7fffffff) | 0);
     splits.current = new Map(field.map((_, i) => [i + 1, []]));
     loop.current = freshLoop(COUNTDOWN_S);
@@ -90,6 +125,8 @@ export function RaceTab({ horses, sprites, speed, onIncident }: Props) {
 
   function reset() {
     raceRef.current = null;
+    setFinishEventId(null);
+    setReRunBlocked(false);
     setState("IDLE");
     setRows([]);
   }
@@ -136,7 +173,15 @@ export function RaceTab({ horses, sprites, speed, onIncident }: Props) {
         }
       }
       if (race.done) {
-        publish("sim:session_finished", "OUT", raceFinishedPacket(sessionRef.current, race));
+        const packet = raceFinishedPacket(sessionRef.current, race);
+        const eventId = resolveEventId("sim:session_finished", packet);
+        const alreadySent = publishedFinishSessionsRef.current.has(sessionRef.current);
+        publishedFinishSessionsRef.current.add(sessionRef.current);
+        setFinishEventId(eventId);
+        setReRunBlocked(alreadySent);
+        if (!alreadySent) {
+          publish("sim:session_finished", "OUT", packet);
+        }
         setState("DONE");
         setRows(rowsOf(race, splits.current));
       }
@@ -242,13 +287,82 @@ export function RaceTab({ horses, sprites, speed, onIncident }: Props) {
     <div className={t.stack}>
       <section className={s.card}>
         <div className={s.cardHead}>
-          <h2 className={s.cardTitle}>Trường đua 6 làn</h2>
+          <h2 className={s.cardTitle}>
+            {isTournamentRace && tournamentName ? `🏆 Giải đấu: ${tournamentName}` : "Trường đua 6 làn"}
+          </h2>
           <div className={t.pillGroup}>
+            {isTournamentRace && (
+              <span className={s.badge} style={{ background: "rgba(99, 102, 241, 0.15)", color: "#6366f1" }}>
+                Phiên giải chính thức
+              </span>
+            )}
             <span className={state === "DONE" ? s.FIT : state === "RUNNING" ? s.WATCH : s.badge}>
               {state === "DONE" ? "Đã chốt kết quả" : state === "RUNNING" ? "Đang đua" : "Chuẩn bị"}
             </span>
           </div>
         </div>
+        {isTournamentRace && state === "DONE" && (
+          <div
+            role="status"
+            style={{
+              padding: "0.75rem 1rem",
+              margin: "0.5rem 1rem",
+              borderRadius: "8px",
+              fontSize: "0.875rem",
+              fontWeight: 500,
+              ...(reRunBlocked
+                ? {
+                    background: "rgba(245, 158, 11, 0.12)",
+                    border: "1px solid rgba(245, 158, 11, 0.35)",
+                    color: "#b45309",
+                  }
+                : finishAcknowledged
+                  ? {
+                      background: "rgba(16, 185, 129, 0.12)",
+                      border: "1px solid rgba(16, 185, 129, 0.3)",
+                      color: "var(--ok, #10b981)",
+                    }
+                  : transportError || transportState === "OFFLINE"
+                    ? {
+                        background: "rgba(239, 68, 68, 0.1)",
+                        border: "1px solid rgba(239, 68, 68, 0.32)",
+                        color: "#b91c1c",
+                      }
+                    : {
+                        background: "rgba(59, 130, 246, 0.1)",
+                        border: "1px solid rgba(59, 130, 246, 0.3)",
+                        color: "#1d4ed8",
+                      }),
+            }}
+          >
+            {reRunBlocked
+              ? `⚠ Phiên mô phỏng (${sessionRef.current}) đã gửi kết quả ở lượt chạy trước nên máy chủ giữ nguyên kết quả đó. Để chạy lại và đồng bộ lượt mới cho giải đấu, hãy quay lại Main Web và bấm "Mở mô phỏng 2D" để cấp phiên mới.`
+              : finishAcknowledged
+                ? "✓ Kết quả đua mô phỏng 2D đã đồng bộ thành công lên Main Web! Thứ hạng, thời gian và vận tốc từng ngựa đã được nhập sẵn vào biểu mẫu kết quả giải đấu. Hãy quay lại tab Main Web để kiểm tra lại và bấm \"Khóa kết quả chính thức\"."
+                : transportError
+                  ? `✕ Chưa thể đồng bộ kết quả lên Main Web (${transportError}). Vui lòng kiểm tra kết nối máy chủ hoặc quay lại Main Web để mở lại "Mở mô phỏng 2D" / dùng "Lấy kết quả nhanh".`
+                  : transportState === "OFFLINE"
+                    ? "⚠ Cuộc đua đã kết thúc nhưng trình giả lập chưa kết nối được tới máy chủ Main Web (OFFLINE). Kết quả chưa được lưu lên hệ thống."
+                    : "⟳ Cuộc đua đã kết thúc — đang đồng bộ thứ hạng và thời gian về đích lên Main Web..."}
+          </div>
+        )}
+        {!isTournamentRace && state === "DONE" && (
+          <div
+            role="status"
+            style={{
+              padding: "0.65rem 1rem",
+              margin: "0.5rem 1rem",
+              borderRadius: "8px",
+              background: "rgba(100, 116, 139, 0.1)",
+              border: "1px solid rgba(100, 116, 139, 0.25)",
+              color: "#475569",
+              fontSize: "0.84rem",
+              fontWeight: 500,
+            }}
+          >
+            ℹ Phiên chạy thử độc lập (không mở từ giải đấu trên Main Web), kết quả chỉ hiển thị tại màn hình mô phỏng này.
+          </div>
+        )}
         <div className={s.cardBody}>
           <div className={s.row} data-control>
             <div className={s.field}>

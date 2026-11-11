@@ -94,6 +94,17 @@ export function useTransportState(): TransportState {
   return useSyncExternalStore(subscribeTransportState, getTransportState);
 }
 
+export function useTransportError(): string | null {
+  return useSyncExternalStore(subscribeTransportState, getLastError);
+}
+
+export function useEventAcknowledged(eventId: string | null): boolean {
+  return useSyncExternalStore(
+    subscribeTransportState,
+    () => (eventId ? acknowledgedEventIds.has(eventId) : false),
+  );
+}
+
 export function getPendingRetries(): number {
   return pendingMessages.size;
 }
@@ -176,6 +187,8 @@ function sendCriticalMessage(pending: PendingMessage): void {
         pending.timer = null;
       }
       pendingMessages.delete(pending.eventId);
+      lastError = null;
+      notifyState();
       return;
     }
 
