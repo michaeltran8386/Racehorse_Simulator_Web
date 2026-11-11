@@ -41,7 +41,24 @@ export interface ExamSimulationContext {
   medicalRecordId: string | null;
 }
 
-export type SimulationContext = WorkoutSimulationContext | ExamSimulationContext;
+export interface RaceSimulationContext {
+  type: "RACE";
+  sessionId: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "ABORTED_INJURY";
+  tournamentId: string;
+  tournamentName: string;
+  distanceMeters: number;
+  trackType: string;
+  surface: string;
+  entries: Array<{
+    lane: number;
+    registrationId: string;
+    horse: WorkoutSimulationContext["horse"];
+  }>;
+  horse: WorkoutSimulationContext["horse"];
+}
+
+export type SimulationContext = WorkoutSimulationContext | ExamSimulationContext | RaceSimulationContext;
 
 export interface TrialSetup {
   surface: Surface;
@@ -106,13 +123,28 @@ export function validateSimulationContext(
     );
   }
 
-  if (payload.type !== "WORKOUT" && payload.type !== "EXAM") {
+  if (payload.type !== "WORKOUT" && payload.type !== "EXAM" && payload.type !== "RACE") {
     throw new SimulatorApiError(
       `Invalid simulation context type: ${String(payload.type)}.`,
       "INVALID_SIMULATOR_CONTEXT",
       200,
       raw,
     );
+  }
+
+  if (payload.type === "RACE") {
+    if (!Array.isArray(payload.entries)) {
+      throw new SimulatorApiError(
+        "RACE simulation context missing entries array.",
+        "INVALID_SIMULATOR_CONTEXT",
+        200,
+        raw,
+      );
+    }
+    if (!payload.horse && payload.entries.length > 0) {
+      payload.horse = (payload.entries[0] as any)?.horse;
+    }
+    return payload as unknown as RaceSimulationContext;
   }
 
   if (!payload.horse || typeof payload.horse !== "object") {
