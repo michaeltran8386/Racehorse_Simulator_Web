@@ -90,14 +90,22 @@ export function App() {
       if (sessionId) {
         const ctx = await getWorkoutSimulationContext(sessionId);
         setSimulationContext(ctx);
-        const mappedHorse = toHorseProfile(ctx.horse, 0);
-        setHorses([mappedHorse]);
-        setSelectedId(mappedHorse.id);
-        if (ctx.type === "WORKOUT") {
+        if (ctx.type === "RACE") {
+          const raceHorses = (ctx.entries || []).map((e, idx) => toHorseProfile(e.horse, idx));
+          setHorses(raceHorses);
+          setSelectedId(raceHorses[0]?.id || null);
           setScreen("TRACK");
-          setTrackTab("TRIAL");
+          setTrackTab("RACE");
         } else {
-          setScreen("HUB");
+          const mappedHorse = toHorseProfile(ctx.horse, 0);
+          setHorses([mappedHorse]);
+          setSelectedId(mappedHorse.id);
+          if (ctx.type === "WORKOUT") {
+            setScreen("TRACK");
+            setTrackTab("TRIAL");
+          } else {
+            setScreen("HUB");
+          }
         }
       } else {
         // Direct port 5175 access: loads complete real horse/stall catalogue from Backend without login
@@ -436,7 +444,11 @@ export function App() {
 
           {simulationContext ? (
             <span className={c.userBadge} title={`Mã phiên: ${sessionId}`}>
-              {simulationContext.type === "WORKOUT" ? "🏃 Buổi tập" : "🩺 Khám bệnh"} · {simulationContext.horse.name}
+              {simulationContext.type === "RACE"
+                ? `🏆 Giải đấu: ${simulationContext.tournamentName || "Giải đua mô phỏng"}`
+                : simulationContext.type === "WORKOUT"
+                ? `🏃 Buổi tập · ${simulationContext.horse.name}`
+                : `🩺 Khám bệnh · ${simulationContext.horse.name}`}
             </span>
           ) : (
             <span className={c.userBadge} title="Chế độ trực tiếp: xem danh mục ngựa thực tế từ Backend">
@@ -564,7 +576,14 @@ export function App() {
               />
             )}
             {screen === "TRACK" && trackTab === "RACE" && (
-              <RaceTab horses={horses} sprites={sprites} speed={speed} onIncident={markReported} />
+              <RaceTab
+                horses={horses}
+                sprites={sprites}
+                speed={speed}
+                onIncident={markReported}
+                sessionId={sessionId ?? undefined}
+                simulationContext={simulationContext?.type === "RACE" ? simulationContext : undefined}
+              />
             )}
           </main>
         </div>
